@@ -1,0 +1,55 @@
+src-tauri/Cargo.toml
+  s_cbb86680673ad1::t_3e4a412efe7b79 9-13
+src-tauri/src/lib.rs
+  s_cbb86680673ad1::t_2881985bd6c8f3 1-2,51
+ui/src/App.svelte
+  s_cbb86680673ad1::t_ba7641472242e8 43-45
+  s_cbb86680673ad1::t_839541852dbc22 69
+README.md
+  s_cbb86680673ad1::t_fa450197495404 11
+crates/omamail-app/src/tokens.rs
+  s_cbb86680673ad1::t_4a49ab2d4046c4 20-22
+src-tauri/src/webkit.rs
+  s_cbb86680673ad1::t_8a0e6a6fbbd091 1-110
+crates/omamail-app/src/commands.rs
+  s_cbb86680673ad1::t_ec2433f45687bb 81-82
+  s_cbb86680673ad1::t_75b2745ba866da 115
+  s_cbb86680673ad1::t_8f1d6794433f93 218
+crates/omamail-app/Cargo.toml
+  s_cbb86680673ad1::t_87df2b6ccd76d3 17
+  s_cbb86680673ad1::t_e208e028e51256 24-28
+  s_cbb86680673ad1::t_acd7244f6cf435 29
+docs/oauth.md
+  s_cbb86680673ad1::t_fdc79e9480e849 3-5,7,28,36
+  s_cbb86680673ad1::t_24b335137d0eb6 56-57
+  s_cbb86680673ad1::t_e522191822b5e2 6,30,33
+oauth.toml.example
+  s_cbb86680673ad1::t_3dc35c4743db39 1-3
+crates/omamail-app/src/oauth_config.rs
+  s_cbb86680673ad1::t_07eaacc084f251 6-15,21-32,40-46,48,78-84,86-89,136,216,221,229-231,233-235,238-249,255-257
+  s_cbb86680673ad1::t_0f9323749c53a6 232,237,250-254
+  s_cbb86680673ad1::t_549e74795fb253 4,85,90-91,119-122,124-133,146,148-158,214-215,217-220,222-228,236,258-259
+  s_cbb86680673ad1::t_66867935a8ebb8 109,137-145,147
+  s_cbb86680673ad1::t_92241ddb8f8e8b 92-108,110-118,123
+  s_cbb86680673ad1::t_47df237b62bde5 134
+DESIGN.md
+  s_cbb86680673ad1::t_e698b12b858fcf 19
+Cargo.lock
+  s_cbb86680673ad1::t_23fe91fd628854 11-21,117-222,335-343,353-365,491-499,572-581,638-646,657-666,690,703,857-874,944,1100-1126,1144-1153,1164-1173,1325-1337,1717-1722,1729-1746,2051-2060,2249-2250,2252-2254,2347-2362,2511-2523,2552-2584,2591-2620,2882,2959-2968,3088-3098,3131-3144,3337-3347,3354,3369-3378,3389-3397,3582-3602,3618-3630,3744-3798,3999-4009,4027-4036,4238-4243,4370,4633-4645,5032-5042,5544-5552,5814-5823,5847-5902,5949-5962,6008-6044
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b6d145f9c51e5f628a8fdf4ac05628248aa4369",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
