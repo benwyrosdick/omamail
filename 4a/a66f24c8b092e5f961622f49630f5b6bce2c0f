@@ -1,0 +1,82 @@
+ui/src/lib/api.ts
+  s_cbb86680673ad1::t_d1b8280fb563a4 110
+  s_cbb86680673ad1::t_ce3d725199baa7 31
+  s_cbb86680673ad1::t_47a72791ff03eb 32-38,49
+  s_cbb86680673ad1::t_51858a8fa0aa53 46-48,50-57,104-109
+crates/omamail-app/src/jev.rs
+  s_cbb86680673ad1::t_14bbe70615e61b 14-15,54-56,61-91
+  s_cbb86680673ad1::t_20623e141e2876 1-13,16-53,57-60,92-186,188-191,193-214
+  s_cbb86680673ad1::t_5f6d96d4ca7b51 187,192
+crates/omamail-app/src/cli.rs
+  s_cbb86680673ad1::t_06ac3a33e9c05d 250
+crates/omamail-store/src/lib.rs
+  s_cbb86680673ad1::t_adeb61b1a1c4b6 483
+  s_cbb86680673ad1::t_83aefe8982b17f 261,281
+  s_cbb86680673ad1::t_3f548a0ffb79fb 358-423
+  s_cbb86680673ad1::t_a50d56590ebc92 88-106,354,424-460
+  s_cbb86680673ad1::t_a4e40945eff2f3 461
+crates/omamail-app/src/lib.rs
+  s_cbb86680673ad1::t_0e955654725d45 6
+  s_cbb86680673ad1::t_f4bf5c126d0b43 14-15,17
+crates/omamail-app/Cargo.toml
+  s_cbb86680673ad1::t_dfa3cb60454f7c 17
+src-tauri/src/lib.rs
+  s_cbb86680673ad1::t_f5a2902cc32d37 67-68
+  s_cbb86680673ad1::t_cbf465b9e5e396 49-66,69-72,129-139
+crates/omamail-sync/src/lib.rs
+  s_cbb86680673ad1::t_eeba989383a1d6 86
+crates/omamail-google/src/client.rs
+  s_cbb86680673ad1::t_7a98e8f55da43a 220
+  s_cbb86680673ad1::t_73d0da09b98c91 77-96,104-115
+  s_cbb86680673ad1::t_0cf074e9610b98 76
+crates/omamail-app/src/commands.rs
+  s_cbb86680673ad1::t_deb03f9b799a36 470
+  s_cbb86680673ad1::t_eea0f7858e7d04 7,34-41,55,151,153-157,165,167-170
+  s_cbb86680673ad1::t_b199ccebd53c37 178-179,181-182,216
+  s_cbb86680673ad1::t_6dbc3710b557ff 444-451
+  s_cbb86680673ad1::t_5e53a6b3351b8a 164,180,564-584
+  s_cbb86680673ad1::t_c5028282f680cc 1,33,333-398,400-415,417-443,452-469,471-484,495
+  s_cbb86680673ad1::t_d822a6d751cb56 399,416
+  s_cbb86680673ad1::t_2f597e3fc6a83b 485-486,496-533,535-563,585-604
+crates/omamail-core/src/lib.rs
+  s_cbb86680673ad1::t_64369c3d369527 60-62
+ui/src/App.svelte
+  s_cbb86680673ad1::t_09405be4684ad2 36,92-101,104,253
+  s_cbb86680673ad1::t_4e59538e47cfe0 263,328-331,333-336,401
+  s_cbb86680673ad1::t_e26cf309ba3636 147-152
+  s_cbb86680673ad1::t_57280be0556309 111-112,229-252,254-262,264-269,287,289-302,315
+  s_cbb86680673ad1::t_4db3a8027a873d 332,422
+  s_cbb86680673ad1::t_2d45947f39c898 171-172
+  s_cbb86680673ad1::t_2622823121eece 10,12,30-35,38-43,57,61-62,72-77,83,102-103,105-110
+  s_cbb86680673ad1::t_4dce9e09eb5582 359-383,404-409,411-414
+  s_cbb86680673ad1::t_8e9eef1e37c2bb 402-403
+  s_cbb86680673ad1::t_a58216c3ef5471 410
+  s_cbb86680673ad1::t_4e2d522230b0ed 418-421,423-426
+  s_cbb86680673ad1::t_ef8555ef9fd1b9 384-400
+  s_cbb86680673ad1::t_df72e2527e5dba 354
+  s_cbb86680673ad1::t_450c134a64576d 113
+ui/src/app.css
+  s_cbb86680673ad1::t_c8c16652f2a9e5 337-338,342-385
+  s_cbb86680673ad1::t_c6c8046b9b78c8 213-229
+  s_cbb86680673ad1::t_1f7de210bf395a 146-212,230-234,237-239,241,243-249
+  s_cbb86680673ad1::t_bac8510a467244 235-236,240,242
+  s_cbb86680673ad1::t_b2e8af048cf500 386
+Cargo.lock
+  s_cbb86680673ad1::t_04b5556bd10b38 2933
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4aa66f24c8b092e5f961622f49630f5b6bce2c0f",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
