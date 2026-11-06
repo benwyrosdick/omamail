@@ -11,6 +11,7 @@
     type MessageView,
     type Status,
   } from "./lib/api";
+  import type { Action } from "svelte/action";
 
   let status = $state<Status>({
     signed_in: false,
@@ -141,15 +142,39 @@
     }
   }
 
-  function mailDocument(html: string): string {
-    return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>
-      html,body{margin:0;background:#fff;color:#1b1b1f;}
-      body{padding:16px 18px 32px;font:15px/1.5 Inter,system-ui,sans-serif;}
-      img,video{max-width:100%;height:auto;}
-      a{color:#3566d6;}
-      table{max-width:100%;}
-    </style></head><body>${html}</body></html>`;
-  }
+  const renderMail: Action<HTMLElement, string> = (node, html) => {
+    const root = node.shadowRoot ?? node.attachShadow({ mode: "open" });
+    const paint = (body: string) => {
+      root.innerHTML = `<style>
+        :host { display: block; min-height: 100%; background: #fff; color: #1b1b1f; }
+        .sheet { padding: 16px 18px 32px; font: 15px/1.5 Inter, system-ui, sans-serif; }
+        img, video { max-width: 100%; height: auto; }
+        a { color: #3566d6; cursor: pointer; }
+        table { max-width: 100%; }
+      </style><div class="sheet">${body}</div>`;
+    };
+    const onClick = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a");
+      const href = anchor?.getAttribute("href");
+      if (!href) return;
+      event.preventDefault();
+      void api.openLink(href).catch((err) => {
+        error = String(err);
+      });
+    };
+    paint(html);
+    root.addEventListener("click", onClick);
+    return {
+      update(next) {
+        paint(next);
+      },
+      destroy() {
+        root.removeEventListener("click", onClick);
+      },
+    };
+  };
 
   function when(ms: number | null): string {
     if (ms == null) return "";
@@ -165,32 +190,6 @@
 <svelte:window onkeydown={onKey} />
 
 <main class="app">
-  <aside class="rail">
-    <div class="mark">
-      <span class="seal" aria-hidden="true"></span>
-      <span class="word">OmaMail</span>
-    </div>
-    <div class="sub">Gmail</div>
-    <div class="email">{status.email ?? "Not signed in"}</div>
-    <div class="actions">
-      {#if status.signed_in}
-        <button class="primary" disabled={!!busy} onclick={sync}>Sync</button>
-        <button disabled={!!busy} onclick={disconnect}>Sign out</button>
-      {:else}
-        <button class="primary" disabled={!!busy || !desktop} onclick={connect}>
-          Connect Google
-        </button>
-      {/if}
-    </div>
-    {#if busy}<p class="busy">{busy}</p>{/if}
-    {#if error}<p class="error">{error}</p>{/if}
-    <dl class="hint">
-      <div><dt>j k</dt><dd>Up / down</dd></div>
-      <div><dt>enter</dt><dd>Open</dd></div>
-      <div><dt>r</dt><dd>Refresh</dd></div>
-    </dl>
-  </aside>
-
   <section class="list">
     <header class="list-head">
       <h1>Inbox</h1>
@@ -203,7 +202,7 @@
         {:else if !status.signed_in}
           Connect a Google account. Mail stays on this machine — tokens in the keyring, headers in a local database.
         {:else}
-          Nothing cached yet. Sync pulls the latest 50 inbox messages.
+          Nothing cached yet. Refresh pulls the latest 50 inbox messages.
         {/if}
       </p>
     {:else}
@@ -226,6 +225,19 @@
         {/each}
       </div>
     {/if}
+    <div class="account">
+      <span class="seal" aria-hidden="true"></span>
+      <div class="account-copy">
+        <div class="email">{status.email ?? "Not signed in"}</div>
+        {#if busy}<div class="busy">{busy}</div>{:else if error}<div class="error">{error}</div>{/if}
+      </div>
+      {#if status.signed_in}
+        <button class="primary" disabled={!!busy} onclick={sync}>Refresh</button>
+        <button disabled={!!busy} onclick={disconnect}>Sign out</button>
+      {:else}
+        <button class="primary" disabled={!!busy || !desktop} onclick={connect}>Connect</button>
+      {/if}
+    </div>
   </section>
 
   <section class="reader">
@@ -235,12 +247,7 @@
       </header>
       <div class="meta">{open.from} · {when(open.date_ms)}</div>
       {#if open.html}
-        <iframe
-          class="html-mail"
-          title="Message"
-          sandbox="allow-popups allow-popups-to-escape-sandbox"
-          srcdoc={mailDocument(open.html)}
-        ></iframe>
+        <div class="html-mail" use:renderMail={open.html}></div>
       {:else}
         <pre class="body">{open.plain_text}</pre>
       {/if}

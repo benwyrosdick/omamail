@@ -46,6 +46,51 @@ async fn message(
         .map_err(|err| err.to_string())
 }
 
+#[tauri::command]
+fn open_link(url: String) -> Result<(), String> {
+    let url = url.trim();
+    if !is_openable_link(url) {
+        return Err("only web and mail links can be opened".into());
+    }
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "cmd"
+    } else {
+        "xdg-open"
+    };
+    let mut cmd = std::process::Command::new(program);
+    if cfg!(target_os = "windows") {
+        cmd.args(["/C", "start", "", url]);
+    } else {
+        cmd.arg(url);
+    }
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|err| format!("could not open the link: {err}"))
+}
+
+fn is_openable_link(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    let allowed = lower.starts_with("https://")
+        || lower.starts_with("http://")
+        || lower.starts_with("mailto:");
+    allowed && !url.chars().any(|ch| ch.is_control() || ch == '"' || ch == '\'')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_openable_link;
+
+    #[test]
+    fn only_web_and_mail_links_open() {
+        assert!(is_openable_link("https://example.com/a"));
+        assert!(is_openable_link("mailto:ada@example.com"));
+        assert!(!is_openable_link("javascript:alert(1)"));
+        assert!(!is_openable_link("file:///etc/passwd"));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     webkit::apply_nvidia_workaround();
@@ -57,7 +102,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(services)
         .invoke_handler(tauri::generate_handler![
-            theme, status, login, logout, sync, inbox, message
+            theme, status, login, logout, sync, inbox, message, open_link
         ])
         .setup(|app| {
             if let Some(watcher) = watch_theme(app.handle().clone()) {

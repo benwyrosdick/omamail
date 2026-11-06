@@ -80,4 +80,5 @@ export const api = {
   sync: () => invoke<number>("sync"),
   inbox: () => invoke<InboxItem[]>("inbox"),
   message: (id: string) => invoke<MessageView>("message", { id }),
+  openLink: (url: string) => invoke<void>("open_link", { url }),
 };
