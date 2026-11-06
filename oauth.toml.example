@@ -1,5 +1,6 @@
-# Copy to ~/.config/omamail/oauth.toml
-# See docs/oauth.md. Do not commit the copy.
+# Optional. auth login writes ~/.config/omamail/oauth.toml on this machine
+# after you paste your own Desktop client. Do not commit the copy.
+# See docs/oauth.md.
 
 client_id = "your-id.apps.googleusercontent.com"
 

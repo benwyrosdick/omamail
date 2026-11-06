@@ -16,7 +16,7 @@ GTK was not used, for the same reason OmaCal skipped it: a later macOS build sho
 
 ## Auth
 
-Desktop PKCE against a **user-supplied** Google client id (`OMAMAIL_GOOGLE_CLIENT_ID` or `~/.config/omamail/oauth.toml`). No client id or secret is compiled in. A secret may be set if Google's token endpoint demands one; it is sent and never logged.
+Desktop PKCE. The client id and secret are compiled in, as OmaCal does. That pair identifies the app to Google. It is extractable from the binary; Google treats an installed-app secret that way. It does not grant access to anyone's mail without that person's consent. Env and `oauth.toml` override it for a different Cloud project. Secrets are sent to Google and never logged.
 
 Scopes: `openid`, `email`, `gmail.readonly`. Not modify, not send.
 

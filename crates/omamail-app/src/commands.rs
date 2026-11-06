@@ -78,7 +78,8 @@ pub async fn status(services: &Services) -> Status {
 }
 
 pub async fn login(services: &Services) -> anyhow::Result<Session> {
-    let config = OauthConfig::load(&services.paths)?;
+    let config = OauthConfig::resolve(&services.paths);
+    let config = config.ensure_secret(&services.paths)?;
     let signed_in =
         omamail_google::sign_in_via_browser(&config.client_id, config.client_secret.as_deref())
             .await?;
@@ -111,6 +112,7 @@ pub async fn login(services: &Services) -> anyhow::Result<Session> {
         &refresh,
         signed_in.tokens.expires_at_ms,
     );
+    sync(services).await?;
     Ok(Session {
         email: signed_in.email,
     })
@@ -213,7 +215,7 @@ async fn access_token(services: &Services, email: &str) -> anyhow::Result<String
         .await
         .map_err(|err| anyhow::anyhow!(err.to_string()))?
         .ok_or_else(|| anyhow::anyhow!("not signed in"))?;
-    let config = OauthConfig::load(&services.paths)?;
+    let config = OauthConfig::resolve(&services.paths);
     let tokens =
         match omamail_google::refresh(&config.client_id, config.client_secret.as_deref(), &refresh)
             .await

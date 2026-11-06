@@ -40,6 +40,9 @@
             void stop();
           };
           await refresh();
+          if (status.signed_in && messages.length === 0) {
+            await sync();
+          }
         }
       } catch (err) {
         error = String(err);
@@ -63,7 +66,7 @@
   }
 
   async function connect() {
-    busy = "Waiting for the browser…";
+    busy = "Signing in and fetching mail…";
     error = null;
     try {
       await api.login();

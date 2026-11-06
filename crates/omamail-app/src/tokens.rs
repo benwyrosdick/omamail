@@ -17,7 +17,9 @@ pub trait TokenStore: Send + Sync {
     async fn delete(&self, account: &str) -> Result<(), TokenError>;
 }
 
-/// OS keyring. The secret is the refresh token. Access tokens are not stored.
+/// OS keyring (Secret Service on Linux). The secret is the refresh token.
+/// Access tokens are not stored. The `keyring` crate's default build is an
+/// in-memory mock, so the Linux features are enabled in Cargo.toml.
 pub struct KeyringStore;
 
 #[async_trait]

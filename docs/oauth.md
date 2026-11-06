@@ -1,6 +1,10 @@
 # Google OAuth client
 
-OmaMail does not ship a client id or secret. Create a Desktop client on a Cloud project you control, and add yourself as a test user. Until the app is verified, Google shows an "unverified app" warning — that is expected.
+The Desktop client id and secret are compiled into OmaMail, the same way OmaCal ships its Google client. People sign in with their own Google account. The baked-in secret identifies the app to Google. It is not their password, and it does not let the app read mail they have not consented to. Google does not treat an installed-app secret as confidential — anyone can extract it from the binary — so it is not a private key you hand out separately.
+
+Until the Cloud app is verified, Google shows an "unverified app" warning, and sign-in only works for accounts listed as test users. Add each person under the consent screen, or publish and verify the app, or other people stop at `access_denied`.
+
+`omamail auth login` uses the baked-in client. It does not write the secret into `oauth.toml`.
 
 ## 1. Cloud project
 
@@ -21,31 +25,17 @@ OmaMail does not ship a client id or secret. Create a Desktop client on a Cloud 
 2. Application type: **Desktop app**. A Web client will reject the loopback redirect.
 3. Copy the client id. It looks like `something.apps.googleusercontent.com`.
 
-Desktop clients may also show a client secret. Google does not treat that secret as confidential. Leave it unset unless the token endpoint answers `invalid_client`.
+You only need your own client if you are replacing the baked-in one. Copy the client secret too. Google's token endpoint requires it for a Desktop client. Keep that override out of git.
 
-## 4. Configure OmaMail
-
-```bash
-mkdir -p ~/.config/omamail
-cp oauth.toml.example ~/.config/omamail/oauth.toml
-```
-
-Edit the copy:
-
-```toml
-client_id = "something.apps.googleusercontent.com"
-# client_secret = "only-if-token-exchange-rejects-the-public-client"
-```
-
-Or export `OMAMAIL_GOOGLE_CLIENT_ID` (and, only if needed, `OMAMAIL_GOOGLE_CLIENT_SECRET`). The environment wins over the file.
-
-Do not commit `oauth.toml`. It is gitignored.
-
-## 5. Sign in
+## 4. Sign in
 
 ```bash
 omamail auth login
 ```
+
+That opens the browser with the baked-in client. To use a different client, write `~/.config/omamail/oauth.toml` or export `OMAMAIL_GOOGLE_CLIENT_ID` and `OMAMAIL_GOOGLE_CLIENT_SECRET`. The environment wins over the file, and either wins over the baked-in client.
+
+Do not commit `oauth.toml`. It is gitignored.
 
 A browser opens on `127.0.0.1`. The refresh token goes to the OS keyring under the service name `omamail`. If the secret service is not running (`gnome-keyring`, KeePassXC, or kwallet), login fails with `keyring unavailable` rather than writing the token to SQLite.
 
@@ -63,7 +53,8 @@ Or open the window with `omamail` and use Connect Google.
 | Symptom | Fix |
 | --- | --- |
 | `access_denied` | Add yourself as a test user. |
-| `invalid_client` | Put the Desktop client secret in `oauth.toml`, or the client id is from a different project than you think. |
+| `invalid_request` / `client_secret is missing` | Run `auth login` in a terminal and paste the Desktop client secret, or add `client_secret` to `oauth.toml`. |
+| `invalid_client` | The secret does not belong to this client id. |
 | `accessNotConfigured` / Gmail API has not been used | Enable the Gmail API on that project. |
 | No refresh token | Revoke OmaMail at [Google account permissions](https://myaccount.google.com/permissions) and sign in again. |
 | Keyring hang or `keyring unavailable` | Start a secret service. A minimal Hyprland session does not always have one. |

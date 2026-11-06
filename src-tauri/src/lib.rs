@@ -1,3 +1,5 @@
+mod webkit;
+
 use omamail_app::{colors_path, commands, current_palette, Services};
 use std::path::PathBuf;
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
@@ -46,6 +48,7 @@ async fn message(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    webkit::apply_nvidia_workaround();
     let services = tauri::async_runtime::block_on(Services::open_default()).unwrap_or_else(|err| {
         eprintln!("omamail: could not open the local database: {err}");
         std::process::exit(1);

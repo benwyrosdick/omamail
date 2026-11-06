@@ -10,16 +10,22 @@ description = "OmaMail application services: paths, keyring, theme, CLI."
 anyhow.workspace = true
 async-trait.workspace = true
 clap = { version = "4", features = ["derive"] }
-keyring = "3"
 omamail-core = { path = "../omamail-core" }
 omamail-google = { path = "../omamail-google" }
 omamail-store = { path = "../omamail-store" }
 omamail-sync = { path = "../omamail-sync" }
+rpassword = "7"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml = "0.8"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native-sync-persistent", "crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
 
 [dev-dependencies]
 tokio = { workspace = true }
