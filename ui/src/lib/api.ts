@@ -30,7 +30,10 @@ export type InboxItem = {
   unread: boolean;
 };
 
-export type MessageView = InboxItem & { plain_text: string };
+export type MessageView = InboxItem & {
+  plain_text: string;
+  html: string | null;
+};
 
 export const FALLBACK: Palette = {
   bg: "#1a1b26",

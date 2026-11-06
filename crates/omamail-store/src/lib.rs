@@ -72,7 +72,26 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
         .execute(pool)
         .await
         .context("apply schema")?;
+    let columns = sqlx::query("PRAGMA table_info(bodies)")
+        .fetch_all(pool)
+        .await
+        .context("inspect bodies")?;
+    let has_html = columns
+        .iter()
+        .any(|row| row.get::<String, _>("name") == "html");
+    if !has_html {
+        sqlx::query("ALTER TABLE bodies ADD COLUMN html TEXT")
+            .execute(pool)
+            .await
+            .context("add bodies.html")?;
+    }
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CachedBody {
+    pub plain_text: String,
+    pub html: Option<String>,
 }
 
 pub async fn upsert_account(
@@ -257,14 +276,19 @@ pub async fn get_body(
     pool: &SqlitePool,
     account_id: i64,
     gmail_id: &str,
-) -> anyhow::Result<Option<String>> {
-    let row = sqlx::query("SELECT plain_text FROM bodies WHERE account_id = ?1 AND gmail_id = ?2")
-        .bind(account_id)
-        .bind(gmail_id)
-        .fetch_optional(pool)
-        .await
-        .context("get body")?;
-    Ok(row.map(|row| row.get("plain_text")))
+) -> anyhow::Result<Option<CachedBody>> {
+    let row = sqlx::query(
+        "SELECT plain_text, html FROM bodies WHERE account_id = ?1 AND gmail_id = ?2",
+    )
+    .bind(account_id)
+    .bind(gmail_id)
+    .fetch_optional(pool)
+    .await
+    .context("get body")?;
+    Ok(row.map(|row| CachedBody {
+        plain_text: row.get("plain_text"),
+        html: row.get("html"),
+    }))
 }
 
 pub async fn put_body(
@@ -272,19 +296,22 @@ pub async fn put_body(
     account_id: i64,
     gmail_id: &str,
     plain_text: &str,
+    html: Option<&str>,
 ) -> anyhow::Result<()> {
     sqlx::query(
         r#"
-        INSERT INTO bodies (account_id, gmail_id, plain_text, fetched_at)
-        VALUES (?1, ?2, ?3, ?4)
+        INSERT INTO bodies (account_id, gmail_id, plain_text, html, fetched_at)
+        VALUES (?1, ?2, ?3, ?4, ?5)
         ON CONFLICT(account_id, gmail_id) DO UPDATE SET
             plain_text = excluded.plain_text,
+            html = excluded.html,
             fetched_at = excluded.fetched_at
         "#,
     )
     .bind(account_id)
     .bind(gmail_id)
     .bind(plain_text)
+    .bind(html)
     .bind(now_ms())
     .execute(pool)
     .await
@@ -364,11 +391,12 @@ mod tests {
         assert_eq!(listed[0].subject, "Newer");
         assert!(listed[0].unread);
 
-        put_body(&pool, id, "b", "body text").await.unwrap();
-        assert_eq!(
-            get_body(&pool, id, "b").await.unwrap().as_deref(),
-            Some("body text")
-        );
+        put_body(&pool, id, "b", "body text", Some("<p>body</p>"))
+            .await
+            .unwrap();
+        let cached = get_body(&pool, id, "b").await.unwrap().unwrap();
+        assert_eq!(cached.plain_text, "body text");
+        assert_eq!(cached.html.as_deref(), Some("<p>body</p>"));
 
         replace_inbox(&pool, id, &[sample("b", "Newer", 20)])
             .await
@@ -377,8 +405,12 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert!(get_body(&pool, id, "a").await.unwrap().is_none());
         assert_eq!(
-            get_body(&pool, id, "b").await.unwrap().as_deref(),
-            Some("body text")
+            get_body(&pool, id, "b")
+                .await
+                .unwrap()
+                .unwrap()
+                .plain_text,
+            "body text"
         );
 
         let _ = std::fs::remove_dir_all(dir);

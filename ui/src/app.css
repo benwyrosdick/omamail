@@ -289,6 +289,14 @@ button.primary {
   font: 14px/1.55 "IBM Plex Sans", Inter, system-ui, sans-serif;
 }
 
+.html-mail {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+
 .busy {
   color: var(--muted);
   font-size: 12px;

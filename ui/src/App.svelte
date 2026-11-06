@@ -141,6 +141,16 @@
     }
   }
 
+  function mailDocument(html: string): string {
+    return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>
+      html,body{margin:0;background:#fff;color:#1b1b1f;}
+      body{padding:16px 18px 32px;font:15px/1.5 Inter,system-ui,sans-serif;}
+      img,video{max-width:100%;height:auto;}
+      a{color:#3566d6;}
+      table{max-width:100%;}
+    </style></head><body>${html}</body></html>`;
+  }
+
   function when(ms: number | null): string {
     if (ms == null) return "";
     const date = new Date(ms);
@@ -224,7 +234,16 @@
         <h1>{open.subject || "(no subject)"}</h1>
       </header>
       <div class="meta">{open.from} · {when(open.date_ms)}</div>
-      <pre class="body">{open.plain_text}</pre>
+      {#if open.html}
+        <iframe
+          class="html-mail"
+          title="Message"
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
+          srcdoc={mailDocument(open.html)}
+        ></iframe>
+      {:else}
+        <pre class="body">{open.plain_text}</pre>
+      {/if}
     {:else}
       <p class="empty">Select a message.</p>
     {/if}

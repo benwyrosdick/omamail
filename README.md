@@ -10,7 +10,7 @@ The mailbox, OAuth, store, and CLI are Rust. The window is a thin Svelte shell (
 
 - Connect one Google account with loopback PKCE. The Desktop client is baked into the binary, the same way OmaCal ships its Google client. It identifies the app, not a mailbox. A local `oauth.toml` or the environment can override it — see [docs/oauth.md](docs/oauth.md).
 - Sync the latest **50** inbox messages (headers and snippets).
-- Open a message and cache its plain-text body. HTML-only mail is flattened to text, not rendered.
+- Open a message and render its HTML, with scripts removed. Plain text is the fallback. Remote images load.
 - Follow `colors.toml` from the current Omarchy theme, including a live reload when the theme file changes.
 - CLI, JSON on stdout, non-zero exit on failure, no prompts:
 

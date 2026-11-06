@@ -1,7 +1,7 @@
 use crate::oauth_config::OauthConfig;
 use crate::theme::{current_palette, Palette};
 use crate::Services;
-use omamail_core::{MailProvider, MessageSummary, INBOX_LIMIT};
+use omamail_core::{MessageSummary, INBOX_LIMIT};
 use omamail_google::{needs_reauth, GoogleClient};
 use serde::Serialize;
 use std::sync::Mutex;
@@ -40,6 +40,7 @@ pub struct MessageView {
     pub snippet: String,
     pub unread: bool,
     pub plain_text: String,
+    pub html: Option<String>,
 }
 
 struct AccessCache {
@@ -153,17 +154,28 @@ pub async fn message(services: &Services, id: &str) -> anyhow::Result<MessageVie
     let summary = omamail_store::get_message(&services.db, account.id, id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("message is not in the local inbox; run sync"))?;
-    let plain = if let Some(cached) = omamail_store::get_body(&services.db, account.id, id).await? {
+    let cached = omamail_store::get_body(&services.db, account.id, id).await?;
+    let body = if let Some(cached) = cached.filter(|body| body.html.is_some()) {
         cached
     } else {
         let access = access_token(services, &account.email).await?;
         let client = GoogleClient::new(access)?;
         let fetched = client
-            .fetch_plain(id)
+            .fetch_body(id)
             .await
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
-        omamail_store::put_body(&services.db, account.id, id, &fetched).await?;
-        fetched
+        omamail_store::put_body(
+            &services.db,
+            account.id,
+            id,
+            &fetched.plain_text,
+            Some(fetched.html.as_deref().unwrap_or("")),
+        )
+        .await?;
+        omamail_store::CachedBody {
+            plain_text: fetched.plain_text,
+            html: fetched.html,
+        }
     };
     Ok(MessageView {
         id: summary.id,
@@ -173,7 +185,8 @@ pub async fn message(services: &Services, id: &str) -> anyhow::Result<MessageVie
         date_ms: summary.date_ms,
         snippet: summary.snippet,
         unread: summary.unread,
-        plain_text: plain,
+        plain_text: body.plain_text,
+        html: body.html.filter(|html| !html.is_empty()),
     })
 }
 

@@ -69,7 +69,24 @@ impl MailProvider for GoogleClient {
             urlencoding_path(id)
         );
         let raw: serde_json::Value = self.get_json(&url).await?;
-        Ok(plain_from_message(&raw))
+        Ok(body_from_message(&raw).plain_text)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MailBody {
+    pub plain_text: String,
+    pub html: Option<String>,
+}
+
+impl GoogleClient {
+    pub async fn fetch_body(&self, id: &str) -> Result<MailBody, MailError> {
+        let url = format!(
+            "{GMAIL_API}/users/me/messages/{}?format=full",
+            urlencoding_path(id)
+        );
+        let raw: serde_json::Value = self.get_json(&url).await?;
+        Ok(body_from_message(&raw))
     }
 }
 
@@ -236,18 +253,66 @@ fn header_map(value: &serde_json::Value) -> std::collections::HashMap<String, St
     map
 }
 
-fn plain_from_message(value: &serde_json::Value) -> String {
+pub fn body_from_message(value: &serde_json::Value) -> MailBody {
     let payload = value
         .get("payload")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    if let Some(text) = find_part(&payload, "text/plain") {
-        return text;
+    let mut html = find_part(&payload, "text/html");
+    let plain = find_part(&payload, "text/plain");
+    if html.is_none() && plain.as_deref().is_some_and(looks_like_html) {
+        html = plain.clone();
     }
-    if let Some(html) = find_part(&payload, "text/html") {
-        return html_to_text(&html);
-    }
-    "This message has no plain-text body.".into()
+    let plain_text = match plain {
+        Some(text) if !looks_like_html(&text) => text,
+        _ => html
+            .as_deref()
+            .map(html_to_text)
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or_else(|| "This message has no plain-text body.".into()),
+    };
+    let html = html.and_then(|raw| {
+        let clean = sanitize_html(&raw);
+        (!clean.trim().is_empty()).then_some(clean)
+    });
+    MailBody { plain_text, html }
+}
+
+fn looks_like_html(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    trimmed.starts_with('<')
+        && (trimmed.contains("<html")
+            || trimmed.contains("<div")
+            || trimmed.contains("<table")
+            || trimmed.contains("<p")
+            || trimmed.contains("<br")
+            || trimmed.contains("<span"))
+}
+
+/// Drop scripts, event handlers, and embedded frames. Layout and inline
+/// styles stay so the reader can paint the message instead of its source.
+fn sanitize_html(html: &str) -> String {
+    let mut builder = ammonia::Builder::default();
+    builder
+        .add_generic_attributes([
+            "style",
+            "class",
+            "id",
+            "align",
+            "valign",
+            "bgcolor",
+            "color",
+            "width",
+            "height",
+            "cellpadding",
+            "cellspacing",
+            "border",
+            "colspan",
+            "rowspan",
+            "target",
+        ])
+        .link_rel(Some("noopener noreferrer"));
+    builder.clean(html).to_string()
 }
 
 fn find_part(part: &serde_json::Value, mime: &str) -> Option<String> {
@@ -377,7 +442,24 @@ mod tests {
                 ]
             }
         });
-        assert_eq!(plain_from_message(&raw), "hello from gmail");
+        assert_eq!(body_from_message(&raw).plain_text, "hello from gmail");
+        assert!(body_from_message(&raw).html.is_some());
+    }
+
+    #[test]
+    fn html_is_sanitized_for_the_reader() {
+        let raw = serde_json::json!({
+            "payload": {
+                "mimeType": "text/html",
+                "body": {"data": URL_SAFE_NO_PAD.encode(b"<div style=\"color:red\">Hi</div><script>alert(1)</script><img src=\"javascript:alert(1)\">")}
+            }
+        });
+        let body = body_from_message(&raw);
+        let html = body.html.unwrap();
+        assert!(html.contains("Hi"));
+        assert!(html.contains("color:red") || html.contains("color: red"));
+        assert!(!html.to_ascii_lowercase().contains("<script"));
+        assert!(!html.to_ascii_lowercase().contains("javascript:"));
     }
 
     #[test]
@@ -388,7 +470,7 @@ mod tests {
                 "body": {"data": URL_SAFE_NO_PAD.encode(b"<p>Hello &amp; welcome</p>")}
             }
         });
-        let text = plain_from_message(&raw);
+        let text = body_from_message(&raw).plain_text;
         assert!(text.contains("Hello & welcome"));
         assert!(!text.contains("<p>"));
     }
