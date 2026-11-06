@@ -1,0 +1,295 @@
+:root {
+  --bg: #1a1b26;
+  --surface: #24283b;
+  --text: #c0caf5;
+  --muted: #9aa5ce;
+  --accent: #7aa2f7;
+  --selection: #283457;
+  --red: #f7768e;
+  --on-accent: #1a1b26;
+  color-scheme: dark;
+  font-family: Inter, "Noto Sans", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  background: var(--bg);
+  color: var(--text);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+}
+
+body {
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 220px minmax(280px, 390px) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.rail,
+.list,
+.reader {
+  min-height: 0;
+  min-width: 0;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 16px 16px;
+  background: color-mix(in srgb, var(--bg) 86%, black);
+  border-right: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.seal {
+  width: 22px;
+  height: 16px;
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+  position: relative;
+}
+
+.seal::before,
+.seal::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 11px;
+  height: 1.5px;
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+.seal::before {
+  left: 0;
+  transform: rotate(28deg);
+}
+
+.seal::after {
+  right: 0;
+  transform-origin: right center;
+  transform: rotate(-28deg);
+}
+
+.word {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: -6px;
+}
+
+.email {
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.error {
+  color: var(--red);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.hint {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.hint kbd {
+  display: inline-block;
+  min-width: 3.2em;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.list-head,
+.reader-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 16px 10px;
+}
+
+.list-head h1,
+.reader-head h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rows {
+  overflow: auto;
+  padding-bottom: 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  padding: 10px 16px 11px 14px;
+  background: transparent;
+}
+
+.row.unread {
+  border-left-color: var(--accent);
+}
+
+.row.selected {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.row .subject {
+  font-weight: 450;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row.unread .subject {
+  font-weight: 650;
+}
+
+.row .from,
+.row .snippet,
+.row .when {
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row .when {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.row .snippet {
+  grid-column: 1 / -1;
+}
+
+.empty {
+  margin: auto;
+  max-width: 36ch;
+  text-align: center;
+  color: var(--muted);
+  padding: 32px 20px;
+}
+
+.reader {
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--surface) 55%, var(--bg));
+}
+
+.reader-head h1 {
+  text-transform: none;
+  letter-spacing: -0.02em;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.meta {
+  padding: 0 16px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.body {
+  margin: 0;
+  padding: 8px 16px 28px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  font: 14px/1.55 "IBM Plex Sans", Inter, system-ui, sans-serif;
+}
+
+.busy {
+  color: var(--muted);
+  font-size: 12px;
+}

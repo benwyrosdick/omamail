@@ -1,0 +1,25 @@
+[package]
+name = "omamail-google"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Google OAuth (PKCE) and a read-only Gmail client."
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+base64 = "0.22"
+omamail-core = { path = "../omamail-core" }
+rand = "0.9"
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+url = "2"
+
+[dev-dependencies]
+tokio = { workspace = true }

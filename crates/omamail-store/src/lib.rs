@@ -1,0 +1,386 @@
+//! Local mailbox cache. Refresh tokens belong in the OS keyring, never in
+//! these tables.
+
+use anyhow::Context;
+use omamail_core::{Account, MessageSummary};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::Row;
+pub use sqlx::SqlitePool;
+use std::path::Path;
+use std::str::FromStr;
+
+const SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+    id            INTEGER PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    google_sub    TEXT,
+    display_name  TEXT,
+    provider      TEXT NOT NULL,
+    created_at    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    gmail_id    TEXT NOT NULL,
+    thread_id   TEXT NOT NULL,
+    from_addr   TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    date_ms     INTEGER,
+    snippet     TEXT NOT NULL,
+    unread      INTEGER NOT NULL,
+    label_ids   TEXT NOT NULL,
+    PRIMARY KEY (account_id, gmail_id)
+);
+
+CREATE TABLE IF NOT EXISTS bodies (
+    account_id  INTEGER NOT NULL,
+    gmail_id    TEXT NOT NULL,
+    plain_text  TEXT NOT NULL,
+    fetched_at  INTEGER NOT NULL,
+    PRIMARY KEY (account_id, gmail_id)
+);
+
+INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1');
+"#;
+
+pub async fn open(path: &Path) -> anyhow::Result<SqlitePool> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    let url = format!("sqlite://{}", path.display());
+    let opts = SqliteConnectOptions::from_str(&url)
+        .with_context(|| format!("sqlite url for {}", path.display()))?
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(opts)
+        .await
+        .with_context(|| format!("open {}", path.display()))?;
+    migrate(&pool).await?;
+    Ok(pool)
+}
+
+pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::raw_sql(SCHEMA)
+        .execute(pool)
+        .await
+        .context("apply schema")?;
+    Ok(())
+}
+
+pub async fn upsert_account(
+    pool: &SqlitePool,
+    email: &str,
+    google_sub: Option<&str>,
+    display_name: Option<&str>,
+    provider: &str,
+) -> anyhow::Result<i64> {
+    let now = now_ms();
+    let row = sqlx::query(
+        r#"
+        INSERT INTO accounts (email, google_sub, display_name, provider, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        ON CONFLICT(email) DO UPDATE SET
+            google_sub = excluded.google_sub,
+            display_name = COALESCE(excluded.display_name, accounts.display_name),
+            provider = excluded.provider
+        RETURNING id
+        "#,
+    )
+    .bind(email)
+    .bind(google_sub)
+    .bind(display_name)
+    .bind(provider)
+    .bind(now)
+    .fetch_one(pool)
+    .await
+    .context("upsert account")?;
+    Ok(row.get("id"))
+}
+
+pub async fn accounts(pool: &SqlitePool) -> anyhow::Result<Vec<Account>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, email, google_sub, display_name, provider
+        FROM accounts
+        ORDER BY created_at DESC, id DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .context("list accounts")?;
+    Ok(rows
+        .into_iter()
+        .map(|row| Account {
+            id: row.get("id"),
+            email: row.get("email"),
+            google_sub: row.get("google_sub"),
+            display_name: row.get("display_name"),
+            provider: row.get("provider"),
+        })
+        .collect())
+}
+
+/// Replace the cached inbox with `messages`. Rows not in the new set are
+/// dropped so the list matches the latest sync, not a growing union.
+pub async fn replace_inbox(
+    pool: &SqlitePool,
+    account_id: i64,
+    messages: &[MessageSummary],
+) -> anyhow::Result<usize> {
+    let mut tx = pool.begin().await.context("begin inbox replace")?;
+    if messages.is_empty() {
+        sqlx::query("DELETE FROM messages WHERE account_id = ?1")
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("clear inbox")?;
+        sqlx::query("DELETE FROM bodies WHERE account_id = ?1")
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await
+            .context("clear bodies")?;
+        tx.commit().await.context("commit empty inbox")?;
+        return Ok(0);
+    }
+
+    sqlx::query("CREATE TEMP TABLE IF NOT EXISTS keep_ids (id TEXT PRIMARY KEY)")
+        .execute(&mut *tx)
+        .await
+        .context("create keep_ids")?;
+    sqlx::query("DELETE FROM keep_ids")
+        .execute(&mut *tx)
+        .await
+        .context("clear keep_ids")?;
+
+    for message in messages {
+        let labels = serde_json::to_string(&message.label_ids).unwrap_or_else(|_| "[]".into());
+        sqlx::query("INSERT OR IGNORE INTO keep_ids (id) VALUES (?1)")
+            .bind(&message.id)
+            .execute(&mut *tx)
+            .await
+            .context("remember kept id")?;
+        sqlx::query(
+            r#"
+            INSERT INTO messages (
+                account_id, gmail_id, thread_id, from_addr, subject,
+                date_ms, snippet, unread, label_ids
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(account_id, gmail_id) DO UPDATE SET
+                thread_id = excluded.thread_id,
+                from_addr = excluded.from_addr,
+                subject = excluded.subject,
+                date_ms = excluded.date_ms,
+                snippet = excluded.snippet,
+                unread = excluded.unread,
+                label_ids = excluded.label_ids
+            "#,
+        )
+        .bind(account_id)
+        .bind(&message.id)
+        .bind(&message.thread_id)
+        .bind(&message.from)
+        .bind(&message.subject)
+        .bind(message.date_ms)
+        .bind(&message.snippet)
+        .bind(i64::from(message.unread))
+        .bind(labels)
+        .execute(&mut *tx)
+        .await
+        .context("upsert message")?;
+    }
+
+    sqlx::query(
+        "DELETE FROM messages WHERE account_id = ?1 AND gmail_id NOT IN (SELECT id FROM keep_ids)",
+    )
+    .bind(account_id)
+    .execute(&mut *tx)
+    .await
+    .context("drop messages outside the latest inbox")?;
+
+    sqlx::query(
+        "DELETE FROM bodies WHERE account_id = ?1 AND gmail_id NOT IN (SELECT id FROM keep_ids)",
+    )
+    .bind(account_id)
+    .execute(&mut *tx)
+    .await
+    .context("drop bodies outside the latest inbox")?;
+
+    tx.commit().await.context("commit inbox replace")?;
+    Ok(messages.len())
+}
+
+pub async fn list_inbox(pool: &SqlitePool, account_id: i64) -> anyhow::Result<Vec<MessageSummary>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT gmail_id, thread_id, from_addr, subject, date_ms, snippet, unread, label_ids
+        FROM messages
+        WHERE account_id = ?1
+        ORDER BY date_ms DESC, gmail_id DESC
+        "#,
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .context("list inbox")?;
+    rows.into_iter().map(summary_from_row).collect()
+}
+
+pub async fn get_message(
+    pool: &SqlitePool,
+    account_id: i64,
+    gmail_id: &str,
+) -> anyhow::Result<Option<MessageSummary>> {
+    let row = sqlx::query(
+        r#"
+        SELECT gmail_id, thread_id, from_addr, subject, date_ms, snippet, unread, label_ids
+        FROM messages
+        WHERE account_id = ?1 AND gmail_id = ?2
+        "#,
+    )
+    .bind(account_id)
+    .bind(gmail_id)
+    .fetch_optional(pool)
+    .await
+    .context("get message")?;
+    row.map(summary_from_row).transpose()
+}
+
+pub async fn get_body(
+    pool: &SqlitePool,
+    account_id: i64,
+    gmail_id: &str,
+) -> anyhow::Result<Option<String>> {
+    let row = sqlx::query("SELECT plain_text FROM bodies WHERE account_id = ?1 AND gmail_id = ?2")
+        .bind(account_id)
+        .bind(gmail_id)
+        .fetch_optional(pool)
+        .await
+        .context("get body")?;
+    Ok(row.map(|row| row.get("plain_text")))
+}
+
+pub async fn put_body(
+    pool: &SqlitePool,
+    account_id: i64,
+    gmail_id: &str,
+    plain_text: &str,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO bodies (account_id, gmail_id, plain_text, fetched_at)
+        VALUES (?1, ?2, ?3, ?4)
+        ON CONFLICT(account_id, gmail_id) DO UPDATE SET
+            plain_text = excluded.plain_text,
+            fetched_at = excluded.fetched_at
+        "#,
+    )
+    .bind(account_id)
+    .bind(gmail_id)
+    .bind(plain_text)
+    .bind(now_ms())
+    .execute(pool)
+    .await
+    .context("put body")?;
+    Ok(())
+}
+
+fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> anyhow::Result<MessageSummary> {
+    let labels: String = row.get("label_ids");
+    let label_ids = serde_json::from_str(&labels).unwrap_or_default();
+    let unread: i64 = row.get("unread");
+    Ok(MessageSummary {
+        id: row.get("gmail_id"),
+        thread_id: row.get("thread_id"),
+        from: row.get("from_addr"),
+        subject: row.get("subject"),
+        date_ms: row.get("date_ms"),
+        snippet: row.get("snippet"),
+        unread: unread != 0,
+        label_ids,
+    })
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(id: &str, subject: &str, date_ms: i64) -> MessageSummary {
+        MessageSummary {
+            id: id.into(),
+            thread_id: format!("t-{id}"),
+            from: "Ada <ada@example.com>".into(),
+            subject: subject.into(),
+            date_ms: Some(date_ms),
+            snippet: "hello".into(),
+            unread: true,
+            label_ids: vec!["INBOX".into(), "UNREAD".into()],
+        }
+    }
+
+    #[tokio::test]
+    async fn account_and_inbox_round_trip() {
+        let dir =
+            std::env::temp_dir().join(format!("omamail-store-{}-{}", std::process::id(), now_ms()));
+        let pool = open(&dir.join("omamail.db")).await.unwrap();
+        let id = upsert_account(
+            &pool,
+            "ada@example.com",
+            Some("sub-1"),
+            Some("Ada"),
+            "google",
+        )
+        .await
+        .unwrap();
+        let again = upsert_account(&pool, "ada@example.com", Some("sub-1"), None, "google")
+            .await
+            .unwrap();
+        assert_eq!(id, again);
+
+        replace_inbox(
+            &pool,
+            id,
+            &[sample("a", "Older", 10), sample("b", "Newer", 20)],
+        )
+        .await
+        .unwrap();
+        let listed = list_inbox(&pool, id).await.unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].id, "b");
+        assert_eq!(listed[0].subject, "Newer");
+        assert!(listed[0].unread);
+
+        put_body(&pool, id, "b", "body text").await.unwrap();
+        assert_eq!(
+            get_body(&pool, id, "b").await.unwrap().as_deref(),
+            Some("body text")
+        );
+
+        replace_inbox(&pool, id, &[sample("b", "Newer", 20)])
+            .await
+            .unwrap();
+        let listed = list_inbox(&pool, id).await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(get_body(&pool, id, "a").await.unwrap().is_none());
+        assert_eq!(
+            get_body(&pool, id, "b").await.unwrap().as_deref(),
+            Some("body text")
+        );
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

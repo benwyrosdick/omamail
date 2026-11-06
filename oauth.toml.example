@@ -1,0 +1,8 @@
+# Copy to ~/.config/omamail/oauth.toml
+# See docs/oauth.md. Do not commit the copy.
+
+client_id = "your-id.apps.googleusercontent.com"
+
+# Optional. Desktop clients are public. Set this only if Google rejects the
+# token exchange with invalid_client.
+# client_secret = ""

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=OmaMail
+Comment=Gmail, the Omarchy way
+Exec=omamail
+Icon=omamail
+Type=Application
+Categories=Office;Email;
+Terminal=false

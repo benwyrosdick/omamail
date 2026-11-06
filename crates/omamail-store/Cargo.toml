@@ -1,0 +1,16 @@
+[package]
+name = "omamail-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQLite cache for OmaMail. Tokens never land here."
+
+[dependencies]
+anyhow.workspace = true
+omamail-core = { path = "../omamail-core" }
+serde_json.workspace = true
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+
+[dev-dependencies]
+tokio = { workspace = true }

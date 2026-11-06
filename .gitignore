@@ -1,0 +1,11 @@
+/target
+**/target
+/node_modules
+/ui/node_modules
+/ui/dist
+/src-tauri/gen
+*.db
+*.db-wal
+*.db-shm
+oauth.toml
+.DS_Store

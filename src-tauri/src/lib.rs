@@ -1,0 +1,97 @@
+use omamail_app::{colors_path, commands, current_palette, Services};
+use std::path::PathBuf;
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
+
+#[tauri::command]
+async fn theme() -> omamail_app::Palette {
+    commands::theme().await
+}
+
+#[tauri::command]
+async fn status(state: tauri::State<'_, Services>) -> Result<omamail_app::Status, String> {
+    Ok(commands::status(&state).await)
+}
+
+#[tauri::command]
+async fn login(state: tauri::State<'_, Services>) -> Result<omamail_app::Session, String> {
+    commands::login(&state).await.map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn logout(state: tauri::State<'_, Services>) -> Result<(), String> {
+    commands::logout(&state)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn sync(state: tauri::State<'_, Services>) -> Result<usize, String> {
+    commands::sync(&state).await.map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn inbox(state: tauri::State<'_, Services>) -> Result<Vec<omamail_app::InboxItem>, String> {
+    commands::inbox(&state).await.map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn message(
+    state: tauri::State<'_, Services>,
+    id: String,
+) -> Result<omamail_app::MessageView, String> {
+    commands::message(&state, &id)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let services = tauri::async_runtime::block_on(Services::open_default()).unwrap_or_else(|err| {
+        eprintln!("omamail: could not open the local database: {err}");
+        std::process::exit(1);
+    });
+
+    tauri::Builder::default()
+        .manage(services)
+        .invoke_handler(tauri::generate_handler![
+            theme, status, login, logout, sync, inbox, message
+        ])
+        .setup(|app| {
+            if let Some(watcher) = watch_theme(app.handle().clone()) {
+                Box::leak(Box::new(watcher));
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building OmaMail")
+        .run(|app, event| {
+            if let RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::Focused(true),
+                ..
+            } = event
+            {
+                if let Some(window) = app.get_webview_window(&label) {
+                    let _ = window.emit("theme-changed", current_palette());
+                }
+            }
+        });
+}
+
+fn watch_theme(app: tauri::AppHandle) -> Option<notify::RecommendedWatcher> {
+    use notify::{RecursiveMode, Watcher};
+    let mut watcher = notify::recommended_watcher(move |_| {
+        let _ = app.emit("theme-changed", current_palette());
+    })
+    .ok()?;
+    if let Some(parent) = colors_path().and_then(|path| path.parent().map(PathBuf::from)) {
+        let _ = watcher.watch(&parent, RecursiveMode::NonRecursive);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let state = PathBuf::from(home).join(".local/state/omarchy/current");
+        if state.is_dir() {
+            let _ = watcher.watch(&state, RecursiveMode::NonRecursive);
+        }
+    }
+    Some(watcher)
+}

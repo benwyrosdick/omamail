@@ -1,0 +1,17 @@
+[package]
+name = "omamail-sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "One-shot inbox sync into the local store."
+
+[dependencies]
+anyhow.workspace = true
+omamail-core = { path = "../omamail-core" }
+omamail-store = { path = "../omamail-store" }
+thiserror.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+tokio = { workspace = true }

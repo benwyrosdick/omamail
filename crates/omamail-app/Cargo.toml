@@ -1,0 +1,25 @@
+[package]
+name = "omamail-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "OmaMail application services: paths, keyring, theme, CLI."
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+clap = { version = "4", features = ["derive"] }
+keyring = "3"
+omamail-core = { path = "../omamail-core" }
+omamail-google = { path = "../omamail-google" }
+omamail-store = { path = "../omamail-store" }
+omamail-sync = { path = "../omamail-sync" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml = "0.8"
+
+[dev-dependencies]
+tokio = { workspace = true }
