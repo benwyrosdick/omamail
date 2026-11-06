@@ -1,0 +1,21 @@
+ui/src/app.css
+  s_cbb86680673ad1::t_b47e00bfc72952 155-156,159-161,163-170,173,175-176
+ui/src/App.svelte
+  s_cbb86680673ad1::t_3b664481d85d05 187-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18984622119ee077c9934a771400300d085f3f96",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
