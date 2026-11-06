@@ -1,0 +1,41 @@
+crates/omamail-google/src/client.rs
+  s_cbb86680673ad1::t_32404903456160 72-89,256,261-264,266-315,445-462
+  s_cbb86680673ad1::t_40295292c91347 473
+crates/omamail-google/Cargo.toml
+  s_cbb86680673ad1::t_e866fb5732fd58 10
+src-tauri/tauri.conf.json
+  s_cbb86680673ad1::t_5e34d1973f0d75 25-26
+crates/omamail-store/src/lib.rs
+  s_cbb86680673ad1::t_7292bcc17bdd35 408-413
+  s_cbb86680673ad1::t_c0ace5c334d284 75-87,91-96,279-291,299,303-304,307,314,394-399
+ui/src/lib/api.ts
+  s_cbb86680673ad1::t_bf5f852daf9880 33-36
+crates/omamail-app/src/commands.rs
+  s_cbb86680673ad1::t_9baed41629bb1d 43,157-158,164,167-171,173-178,188-189
+  s_cbb86680673ad1::t_ba80a67f65f89d 172
+  s_cbb86680673ad1::t_0819918c02313f 4
+README.md
+  s_cbb86680673ad1::t_3683af932c9569 13
+ui/src/App.svelte
+  s_cbb86680673ad1::t_823c9712a89111 144-153,237-246
+ui/src/app.css
+  s_cbb86680673ad1::t_aeab77c08ba50f 292-299
+Cargo.lock
+  s_cbb86680673ad1::t_c275e81ecb434b 52-63,804-815,1044,1046,1174,1777-1788,2424-2429,2438-2449,2954,3088-3098,3108-3119,3129-3139,3148-3149,3164-3172,3719,3897,3901-3902,4349-4361,4371-4384,4717,4755,4758,5400-5415
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1f96721c76116be55f09bf6c22cedbe92bb47b4",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
