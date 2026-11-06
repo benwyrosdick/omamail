@@ -1,0 +1,30 @@
+ui/src/lib/api.ts
+  s_cbb86680673ad1::t_a55d36c625a2d2 83
+src-tauri/src/lib.rs
+  s_cbb86680673ad1::t_95197142b9ba81 75-91
+  s_cbb86680673ad1::t_b30b3aa0c4b7ca 49-74,92-93,105
+ui/src/app.css
+  s_cbb86680673ad1::t_90e8f993c737e7 66,109-111,117,120-126,128-132,135-137,140-143,147
+  s_cbb86680673ad1::t_6dd06b132521cc 279
+  s_cbb86680673ad1::t_1b4fe62b07dd42 179-183
+ui/src/App.svelte
+  s_cbb86680673ad1::t_d9f3ca0b075094 228-240
+  s_cbb86680673ad1::t_e73b35495cbc02 14,145-177,250
+  s_cbb86680673ad1::t_e4ac079da557b8 205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "27396b4d0cac6b29da347eef7a9a52a289ab68fd",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
