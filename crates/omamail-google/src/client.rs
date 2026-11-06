@@ -74,12 +74,45 @@ impl MailProvider for GoogleClient {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GmailLabel {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+fn parse_label(value: &serde_json::Value) -> Option<GmailLabel> {
+    let id = value.get("id")?.as_str()?.to_string();
+    let name = value
+        .get("name")
+        .and_then(|name| name.as_str())
+        .unwrap_or(&id)
+        .to_string();
+    let color = value
+        .pointer("/color/backgroundColor")
+        .and_then(|color| color.as_str())
+        .map(str::to_string);
+    Some(GmailLabel { id, name, color })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MailBody {
     pub plain_text: String,
     pub html: Option<String>,
 }
 
 impl GoogleClient {
+    pub async fn list_labels(&self) -> Result<Vec<GmailLabel>, MailError> {
+        let raw: serde_json::Value = self
+            .get_json(&format!("{GMAIL_API}/users/me/labels"))
+            .await?;
+        let labels = raw
+            .get("labels")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(labels.iter().filter_map(parse_label).collect())
+    }
+
     pub async fn fetch_body(&self, id: &str) -> Result<MailBody, MailError> {
         let url = format!(
             "{GMAIL_API}/users/me/messages/{}?format=full",
@@ -184,6 +217,7 @@ pub fn parse_message(value: &serde_json::Value) -> Result<MessageSummary, String
             .to_string(),
         unread: label_ids.iter().any(|label| label == "UNREAD"),
         label_ids,
+        category: None,
     })
 }
 

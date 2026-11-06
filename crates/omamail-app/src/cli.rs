@@ -247,6 +247,7 @@ mod tests {
                 snippet: "notes attached".into(),
                 unread: true,
                 label_ids: vec!["INBOX".into(), "UNREAD".into()],
+                category: None,
             }],
         )
         .await

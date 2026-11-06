@@ -85,6 +85,25 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
             .await
             .context("add bodies.html")?;
     }
+    let message_columns = sqlx::query("PRAGMA table_info(messages)")
+        .fetch_all(pool)
+        .await
+        .context("inspect messages")?;
+    let has_category = message_columns
+        .iter()
+        .any(|row| row.get::<String, _>("name") == "category");
+    if !has_category {
+        sqlx::query("ALTER TABLE messages ADD COLUMN category TEXT")
+            .execute(pool)
+            .await
+            .context("add messages.category")?;
+    }
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    )
+    .execute(pool)
+    .await
+    .context("settings table")?;
     Ok(())
 }
 
@@ -239,7 +258,7 @@ pub async fn replace_inbox(
 pub async fn list_inbox(pool: &SqlitePool, account_id: i64) -> anyhow::Result<Vec<MessageSummary>> {
     let rows = sqlx::query(
         r#"
-        SELECT gmail_id, thread_id, from_addr, subject, date_ms, snippet, unread, label_ids
+        SELECT gmail_id, thread_id, from_addr, subject, date_ms, snippet, unread, label_ids, category
         FROM messages
         WHERE account_id = ?1
         ORDER BY date_ms DESC, gmail_id DESC
@@ -259,7 +278,7 @@ pub async fn get_message(
 ) -> anyhow::Result<Option<MessageSummary>> {
     let row = sqlx::query(
         r#"
-        SELECT gmail_id, thread_id, from_addr, subject, date_ms, snippet, unread, label_ids
+        SELECT gmail_id, thread_id, from_addr, subject, date_ms, snippet, unread, label_ids, category
         FROM messages
         WHERE account_id = ?1 AND gmail_id = ?2
         "#,
@@ -332,7 +351,112 @@ fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> anyhow::Result<MessageSumma
         snippet: row.get("snippet"),
         unread: unread != 0,
         label_ids,
+        category: row.get("category"),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredLabel {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+pub async fn replace_labels(
+    pool: &SqlitePool,
+    account_id: i64,
+    labels: &[StoredLabel],
+) -> anyhow::Result<()> {
+    let mut tx = pool.begin().await.context("begin label replace")?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS gmail_labels (
+            account_id INTEGER NOT NULL,
+            label_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            color TEXT,
+            PRIMARY KEY (account_id, label_id)
+        )",
+    )
+    .execute(&mut *tx)
+    .await
+    .context("gmail labels table")?;
+    sqlx::query("DELETE FROM gmail_labels WHERE account_id = ?1")
+        .bind(account_id)
+        .execute(&mut *tx)
+        .await
+        .context("clear labels")?;
+    for label in labels {
+        sqlx::query(
+            "INSERT INTO gmail_labels (account_id, label_id, name, color) VALUES (?1, ?2, ?3, ?4)",
+        )
+        .bind(account_id)
+        .bind(&label.id)
+        .bind(&label.name)
+        .bind(&label.color)
+        .execute(&mut *tx)
+        .await
+        .context("insert label")?;
+    }
+    tx.commit().await.context("commit labels")?;
+    Ok(())
+}
+
+pub async fn gmail_labels(pool: &SqlitePool, account_id: i64) -> anyhow::Result<Vec<StoredLabel>> {
+    let rows = sqlx::query(
+        "SELECT label_id, name, color FROM gmail_labels WHERE account_id = ?1 ORDER BY name",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await;
+    match rows {
+        Ok(rows) => Ok(rows
+            .into_iter()
+            .map(|row| StoredLabel {
+                id: row.get("label_id"),
+                name: row.get("name"),
+                color: row.get("color"),
+            })
+            .collect()),
+        Err(_) => Ok(Vec::new()),
+    }
+}
+
+pub async fn set_category(
+    pool: &SqlitePool,
+    account_id: i64,
+    gmail_id: &str,
+    category: &str,
+) -> anyhow::Result<()> {
+    sqlx::query("UPDATE messages SET category = ?1 WHERE account_id = ?2 AND gmail_id = ?3")
+        .bind(category)
+        .bind(account_id)
+        .bind(gmail_id)
+        .execute(pool)
+        .await
+        .context("set category")?;
+    Ok(())
+}
+
+pub async fn get_setting(pool: &SqlitePool, key: &str) -> anyhow::Result<Option<String>> {
+    let row = sqlx::query("SELECT value FROM settings WHERE key = ?1")
+        .bind(key)
+        .fetch_optional(pool)
+        .await
+        .context("get setting")?;
+    Ok(row.map(|row| row.get("value")))
+}
+
+pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .bind(key)
+    .bind(value)
+    .execute(pool)
+    .await
+    .context("set setting")?;
+    Ok(())
 }
 
 fn now_ms() -> i64 {
@@ -356,6 +480,7 @@ mod tests {
             snippet: "hello".into(),
             unread: true,
             label_ids: vec!["INBOX".into(), "UNREAD".into()],
+            category: None,
         }
     }
 

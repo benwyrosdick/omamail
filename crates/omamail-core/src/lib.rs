@@ -57,6 +57,9 @@ pub struct MessageSummary {
     pub snippet: String,
     pub unread: bool,
     pub label_ids: Vec<String>,
+    /// Local category assigned by Jev. Not a Gmail label.
+    #[serde(default)]
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

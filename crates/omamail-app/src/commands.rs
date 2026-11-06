@@ -1,8 +1,10 @@
+use crate::jev::{self, Category};
 use crate::oauth_config::OauthConfig;
 use crate::theme::{current_palette, Palette};
 use crate::Services;
 use omamail_core::{MessageSummary, INBOX_LIMIT};
 use omamail_google::{needs_reauth, GoogleClient};
+use omamail_store::StoredLabel;
 use serde::Serialize;
 use std::sync::Mutex;
 
@@ -28,6 +30,15 @@ pub struct InboxItem {
     pub date_ms: Option<i64>,
     pub snippet: String,
     pub unread: bool,
+    pub category: Option<String>,
+    pub tags: Vec<Tag>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Tag {
+    pub name: String,
+    pub color: Option<String>,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,6 +52,7 @@ pub struct MessageView {
     pub unread: bool,
     pub plain_text: String,
     pub html: Option<String>,
+    pub tags: Vec<Tag>,
 }
 
 struct AccessCache {
@@ -136,17 +148,26 @@ pub async fn sync(services: &Services) -> anyhow::Result<usize> {
     let account = require_account(services).await?;
     let access = access_token(services, &account.email).await?;
     let client = GoogleClient::new(access)?;
-    omamail_sync::sync_inbox(&services.db, account.id, &client, INBOX_LIMIT)
+    let synced = omamail_sync::sync_inbox(&services.db, account.id, &client, INBOX_LIMIT)
         .await
-        .map_err(|err| anyhow::anyhow!(err.to_string()))
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    if let Err(err) = refresh_labels(services, &client, account.id).await {
+        eprintln!("omamail: could not refresh Gmail labels: {err}");
+    }
+    Ok(synced)
 }
 
 pub async fn inbox(services: &Services) -> anyhow::Result<Vec<InboxItem>> {
     let Some(account) = signed_in_account(services).await? else {
         return Ok(Vec::new());
     };
+    let labels = labels_for(services, account.id).await;
+    let categories = load_categories(services).await?;
     let messages = omamail_store::list_inbox(&services.db, account.id).await?;
-    Ok(messages.into_iter().map(item_from).collect())
+    Ok(messages
+        .into_iter()
+        .map(|message| item_from(message, &labels, &categories))
+        .collect())
 }
 
 pub async fn message(services: &Services, id: &str) -> anyhow::Result<MessageView> {
@@ -154,6 +175,11 @@ pub async fn message(services: &Services, id: &str) -> anyhow::Result<MessageVie
     let summary = omamail_store::get_message(&services.db, account.id, id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("message is not in the local inbox; run sync"))?;
+    let tags = tags_for(
+        &summary,
+        &labels_for(services, account.id).await,
+        &load_categories(services).await?,
+    );
     let cached = omamail_store::get_body(&services.db, account.id, id).await?;
     let body = if let Some(cached) = cached.filter(|body| body.html.is_some()) {
         cached
@@ -187,6 +213,7 @@ pub async fn message(services: &Services, id: &str) -> anyhow::Result<MessageVie
         unread: summary.unread,
         plain_text: body.plain_text,
         html: body.html.filter(|html| !html.is_empty()),
+        tags,
     })
 }
 
@@ -303,7 +330,160 @@ fn clear_cache(services: &Services) {
     }
 }
 
-fn item_from(message: MessageSummary) -> InboxItem {
+const TYPESAFE_ACCOUNT: &str = "typesafe";
+const SETTING_JEV: &str = "jev_enabled";
+const SETTING_CATEGORIES: &str = "categories";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MailSettings {
+    pub key_configured: bool,
+    pub jev_enabled: bool,
+    pub categories: Vec<Category>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct SettingsUpdate {
+    pub api_key: Option<String>,
+    pub jev_enabled: bool,
+    pub categories: Vec<Category>,
+}
+
+pub async fn mail_settings(services: &Services) -> anyhow::Result<MailSettings> {
+    let key_configured = services
+        .tokens
+        .get(TYPESAFE_ACCOUNT)
+        .await
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?
+        .is_some();
+    let jev_enabled = omamail_store::get_setting(&services.db, SETTING_JEV)
+        .await?
+        .as_deref()
+        == Some("1");
+    let categories = load_categories(services).await?;
+    Ok(MailSettings {
+        key_configured,
+        jev_enabled,
+        categories,
+    })
+}
+
+pub async fn save_settings(services: &Services, update: SettingsUpdate) -> anyhow::Result<MailSettings> {
+    let categories = normalize_categories(update.categories)?;
+    if let Some(key) = update.api_key {
+        let key = key.trim().to_string();
+        if key.is_empty() {
+            services
+                .tokens
+                .delete(TYPESAFE_ACCOUNT)
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+        } else {
+            services
+                .tokens
+                .set(TYPESAFE_ACCOUNT, &key)
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+        }
+    }
+    omamail_store::set_setting(
+        &services.db,
+        SETTING_JEV,
+        if update.jev_enabled { "1" } else { "0" },
+    )
+    .await?;
+    let encoded = serde_json::to_string(&categories)?;
+    omamail_store::set_setting(&services.db, SETTING_CATEGORIES, &encoded).await?;
+    mail_settings(services).await
+}
+
+pub async fn classify(services: &Services, all: bool) -> anyhow::Result<usize> {
+    let settings = mail_settings(services).await?;
+    if settings.categories.is_empty() {
+        anyhow::bail!("add at least one category before sorting");
+    }
+    let api_key = services
+        .tokens
+        .get(TYPESAFE_ACCOUNT)
+        .await
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?
+        .ok_or_else(|| anyhow::anyhow!("add a TypeSafe API key in settings"))?;
+    let Some(account) = signed_in_account(services).await? else {
+        anyhow::bail!("not signed in");
+    };
+    let pending: Vec<MessageSummary> = omamail_store::list_inbox(&services.db, account.id)
+        .await?
+        .into_iter()
+        .filter(|message| all || message.category.is_none())
+        .collect();
+    if pending.is_empty() {
+        return Ok(0);
+    }
+    let http = reqwest::Client::builder()
+        .user_agent("omamail/0.1")
+        .build()
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    let mut sorted = 0;
+    for message in pending {
+        let (choice, _) = jev::classify(
+            &http,
+            &api_key,
+            &message.from,
+            &message.subject,
+            &message.snippet,
+            &settings.categories,
+        )
+        .await?;
+        omamail_store::set_category(&services.db, account.id, &message.id, &choice).await?;
+        sorted += 1;
+    }
+    Ok(sorted)
+}
+
+async fn load_categories(services: &Services) -> anyhow::Result<Vec<Category>> {
+    match omamail_store::get_setting(&services.db, SETTING_CATEGORIES).await? {
+        Some(raw) => {
+            let mut categories: Vec<Category> = serde_json::from_str(&raw)
+                .map_err(|err| anyhow::anyhow!("saved categories are not readable: {err}"))?;
+            for (index, category) in categories.iter_mut().enumerate() {
+                category.color = jev::normalize_color(&category.color, &category.name, index);
+            }
+            Ok(categories)
+        }
+        None => Ok(jev::default_categories()),
+    }
+}
+
+fn normalize_categories(categories: Vec<Category>) -> anyhow::Result<Vec<Category>> {
+    let mut names = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for category in categories {
+        let name = category.name.trim().to_string();
+        let description = category.description.trim().to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let key = name.to_ascii_lowercase();
+        if !names.insert(key) {
+            anyhow::bail!("two categories are named {name}");
+        }
+        out.push(Category {
+            color: jev::normalize_color(&category.color, &name, out.len()),
+            description: if description.is_empty() {
+                name.clone()
+            } else {
+                description
+            },
+            name,
+        });
+    }
+    if out.is_empty() {
+        anyhow::bail!("keep at least one category");
+    }
+    Ok(out)
+}
+
+fn item_from(message: MessageSummary, labels: &[StoredLabel], categories: &[Category]) -> InboxItem {
+    let tags = tags_for(&message, labels, categories);
     InboxItem {
         id: message.id,
         thread_id: message.thread_id,
@@ -312,5 +492,114 @@ fn item_from(message: MessageSummary) -> InboxItem {
         date_ms: message.date_ms,
         snippet: message.snippet,
         unread: message.unread,
+        category: message.category,
+        tags,
     }
+}
+
+fn tags_for(message: &MessageSummary, labels: &[StoredLabel], categories: &[Category]) -> Vec<Tag> {
+    let mut tags = Vec::new();
+    if let Some(name) = message.category.as_deref() {
+        let color = categories
+            .iter()
+            .find(|category| category.name.eq_ignore_ascii_case(name))
+            .map(|category| jev::normalize_color(&category.color, &category.name, 0));
+        tags.push(Tag {
+            name: name.to_string(),
+            color,
+            kind: "jev".into(),
+        });
+    }
+    for id in &message.label_ids {
+        if let Some(tag) = gmail_tag(id, labels) {
+            tags.push(tag);
+        }
+    }
+    tags
+}
+
+fn gmail_tag(id: &str, labels: &[StoredLabel]) -> Option<Tag> {
+    if matches!(
+        id,
+        "INBOX" | "UNREAD" | "SENT" | "DRAFT" | "SPAM" | "TRASH" | "CHAT"
+    ) {
+        return None;
+    }
+    if let Some(stored) = labels.iter().find(|label| label.id == id) {
+        return Some(Tag {
+            name: friendly_label(&stored.name, id),
+            color: stored.color.clone(),
+            kind: "gmail".into(),
+        });
+    }
+    if id.starts_with("Label_") {
+        return None;
+    }
+    Some(Tag {
+        name: friendly_label(id, id),
+        color: None,
+        kind: "gmail".into(),
+    })
+}
+
+fn friendly_label(name: &str, id: &str) -> String {
+    let source = if name.starts_with("CATEGORY_") || name == id {
+        id
+    } else {
+        return name.to_string();
+    };
+    match source {
+        "STARRED" => "Starred".into(),
+        "IMPORTANT" => "Important".into(),
+        "CATEGORY_PERSONAL" => "Primary".into(),
+        "CATEGORY_SOCIAL" => "Social".into(),
+        "CATEGORY_PROMOTIONS" => "Promotions".into(),
+        "CATEGORY_UPDATES" => "Updates".into(),
+        "CATEGORY_FORUMS" => "Forums".into(),
+        other => other
+            .trim_start_matches("CATEGORY_")
+            .replace('_', " ")
+            .to_lowercase(),
+    }
+}
+
+async fn labels_for(services: &Services, account_id: i64) -> Vec<StoredLabel> {
+    if let Ok(labels) = omamail_store::gmail_labels(&services.db, account_id).await {
+        if !labels.is_empty() {
+            return labels;
+        }
+    }
+    let Ok(Some(account)) = signed_in_account(services).await else {
+        return Vec::new();
+    };
+    let Ok(access) = access_token(services, &account.email).await else {
+        return Vec::new();
+    };
+    let Ok(client) = GoogleClient::new(access) else {
+        return Vec::new();
+    };
+    let _ = refresh_labels(services, &client, account_id).await;
+    omamail_store::gmail_labels(&services.db, account_id)
+        .await
+        .unwrap_or_default()
+}
+
+async fn refresh_labels(
+    services: &Services,
+    client: &GoogleClient,
+    account_id: i64,
+) -> anyhow::Result<()> {
+    let labels = client
+        .list_labels()
+        .await
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    let stored = labels
+        .into_iter()
+        .map(|label| StoredLabel {
+            id: label.id,
+            name: label.name,
+            color: label.color,
+        })
+        .collect::<Vec<_>>();
+    omamail_store::replace_labels(&services.db, account_id, &stored).await
 }

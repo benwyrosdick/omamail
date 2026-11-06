@@ -2930,6 +2930,7 @@ dependencies = [
  "omamail-google",
  "omamail-store",
  "omamail-sync",
+ "reqwest 0.12.28",
  "rpassword",
  "serde",
  "serde_json",

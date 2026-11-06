@@ -7,7 +7,9 @@
     inTauri,
     loadTheme,
     onTheme,
+    type Category,
     type InboxItem,
+    type MailSettings,
     type MessageView,
     type Status,
   } from "./lib/api";
@@ -25,8 +27,20 @@
   let error = $state<string | null>(null);
   let busy = $state<string | null>(null);
   let desktop = $state(true);
+  let settingsOpen = $state(false);
+  let mailSettings = $state<MailSettings | null>(null);
+  let apiKeyDraft = $state("");
+  let jevEnabled = $state(false);
+  let categoryDraft = $state<Category[]>([]);
+  let categoryFilter = $state("all");
+  let dragIndex = $state<number | null>(null);
 
-  const current = $derived(messages[selected] ?? null);
+  const visible = $derived(
+    categoryFilter === "all"
+      ? messages
+      : messages.filter((message) => message.category === categoryFilter),
+  );
+  const current = $derived(visible[selected] ?? null);
 
   onMount(() => {
     desktop = inTauri();
@@ -40,9 +54,12 @@
           unlisten = () => {
             void stop();
           };
+          await loadSettings();
           await refresh();
           if (status.signed_in && messages.length === 0) {
             await sync();
+          } else if (jevEnabled && mailSettings?.key_configured && messages.some((message) => !message.category)) {
+            await sortMail();
           }
         }
       } catch (err) {
@@ -52,17 +69,45 @@
     return () => unlisten();
   });
 
+  async function loadSettings() {
+    mailSettings = await api.settings();
+    jevEnabled = mailSettings.jev_enabled;
+    categoryDraft = mailSettings.categories.map((category) => ({ ...category }));
+  }
+
   async function refresh() {
     status = await api.status();
     error = status.error;
     if (status.signed_in) {
       messages = await api.inbox();
-      if (selected >= messages.length) selected = 0;
+      if (selected >= visible.length) selected = 0;
       if (current) await openCurrent();
       else open = null;
     } else {
       messages = [];
       open = null;
+    }
+  }
+
+  function moveCategory(from: number, to: number) {
+    if (from === to) return;
+    const next = [...categoryDraft];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    categoryDraft = next;
+  }
+
+  async function sortMail(all = false) {
+    busy = all ? "Re-sorting every message…" : "Sorting with Jev…";
+    error = null;
+    try {
+      await api.classify(all);
+      messages = await api.inbox();
+      if (selected >= visible.length) selected = 0;
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = null;
     }
   }
 
@@ -99,7 +144,12 @@
     try {
       await api.sync();
       messages = await api.inbox();
-      if (selected >= messages.length) selected = 0;
+      if (jevEnabled && mailSettings?.key_configured) {
+        busy = "Sorting with Jev…";
+        await api.classify();
+        messages = await api.inbox();
+      }
+      if (selected >= visible.length) selected = 0;
       if (current) await openCurrent();
     } catch (err) {
       error = String(err);
@@ -118,8 +168,8 @@
   }
 
   function move(delta: number) {
-    if (messages.length === 0) return;
-    selected = Math.min(messages.length - 1, Math.max(0, selected + delta));
+    if (visible.length === 0) return;
+    selected = Math.min(visible.length - 1, Math.max(0, selected + delta));
     void openCurrent();
   }
 
@@ -176,6 +226,47 @@
     };
   };
 
+  async function openSettings() {
+    settingsOpen = true;
+    error = null;
+    try {
+      await loadSettings();
+      apiKeyDraft = "";
+    } catch (err) {
+      error = String(err);
+    }
+  }
+
+  async function saveSettings() {
+    busy = "Saving settings…";
+    error = null;
+    try {
+      mailSettings = await api.saveSettings({
+        api_key: apiKeyDraft.trim() ? apiKeyDraft.trim() : null,
+        jev_enabled: jevEnabled,
+        categories: categoryDraft,
+      });
+      jevEnabled = mailSettings.jev_enabled;
+      categoryDraft = mailSettings.categories.map((category) => ({ ...category }));
+      apiKeyDraft = "";
+      if (jevEnabled && mailSettings.key_configured && status.signed_in) {
+        await sortMail(true);
+      }
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = null;
+    }
+  }
+
+  function addCategory() {
+    categoryDraft = [...categoryDraft, { name: "", description: "", color: "#89b4fa" }];
+  }
+
+  function removeCategory(index: number) {
+    categoryDraft = categoryDraft.filter((_, i) => i !== index);
+  }
+
   function when(ms: number | null): string {
     if (ms == null) return "";
     const date = new Date(ms);
@@ -193,8 +284,22 @@
   <section class="list">
     <header class="list-head">
       <h1>Inbox</h1>
-      <span class="count">{messages.length ? `${messages.length}` : ""}</span>
+      <span class="count">{visible.length ? `${visible.length}` : ""}</span>
     </header>
+    {#if mailSettings && (jevEnabled || messages.some((message) => message.category))}
+      <div class="filters">
+        <button class:on={categoryFilter === "all"} onclick={() => (categoryFilter = "all")}>All</button>
+        {#each mailSettings.categories as category (category.name)}
+          <button
+            class:on={categoryFilter === category.name}
+            onclick={() => {
+              categoryFilter = category.name;
+              selected = 0;
+            }}>{category.name}</button
+          >
+        {/each}
+      </div>
+    {/if}
     {#if messages.length === 0}
       <p class="empty">
         {#if !desktop}
@@ -207,7 +312,7 @@
       </p>
     {:else}
       <div class="rows">
-        {#each messages as message, index (message.id)}
+        {#each visible as message, index (message.id)}
           <button
             class="row"
             class:selected={index === selected}
@@ -220,6 +325,15 @@
             <span class="subject">{message.subject || "(no subject)"}</span>
             <span class="when">{when(message.date_ms)}</span>
             <span class="from">{message.from}</span>
+            {#if message.tags.length}
+              <span class="tags">
+                {#each message.tags as tag (tag.kind + tag.name)}
+                  <span class="tag" class:jev={tag.kind === "jev"}>
+                    <i style={tag.color ? `background:${tag.color}` : ""}></i>{tag.name}
+                  </span>
+                {/each}
+              </span>
+            {/if}
             <span class="snippet">{message.snippet}</span>
           </button>
         {/each}
@@ -237,14 +351,79 @@
       {:else}
         <button class="primary" disabled={!!busy || !desktop} onclick={connect}>Connect</button>
       {/if}
+      <button disabled={!!busy} onclick={openSettings}>Settings</button>
     </div>
   </section>
 
   <section class="reader">
-    {#if open}
+    {#if settingsOpen}
+      <header class="reader-head">
+        <h1>Settings</h1>
+        <button onclick={() => (settingsOpen = false)}>Close</button>
+      </header>
+      <form class="settings" onsubmit={(event) => { event.preventDefault(); void saveSettings(); }}>
+        <label>
+          TypeSafe API key
+          <input
+            type="password"
+            autocomplete="off"
+            placeholder={mailSettings?.key_configured ? "Saved — paste to replace" : "Paste your key"}
+            bind:value={apiKeyDraft}
+          />
+        </label>
+        <label class="check">
+          <input type="checkbox" bind:checked={jevEnabled} />
+          Sort mail with Jev
+        </label>
+        <div class="categories">
+          <div class="categories-head">
+            <h2>Categories</h2>
+            <button type="button" onclick={addCategory}>Add</button>
+          </div>
+          {#each categoryDraft as category, index (index)}
+            <div
+              class="category-edit"
+              class:dragging={dragIndex === index}
+              ondragover={(event) => event.preventDefault()}
+              ondrop={() => {
+                if (dragIndex !== null) moveCategory(dragIndex, index);
+                dragIndex = null;
+              }}
+            >
+              <span
+                class="handle"
+                draggable="true"
+                title="Drag to reorder"
+                aria-label="Drag to reorder"
+                ondragstart={() => (dragIndex = index)}
+                ondragend={() => (dragIndex = null)}>⠿</span
+              >
+              <input type="color" bind:value={category.color} aria-label="Color for {category.name}" />
+              <input class="name" placeholder="Name" bind:value={category.name} />
+              <input class="description" placeholder="What belongs here" bind:value={category.description} />
+              <button type="button" onclick={() => removeCategory(index)}>Remove</button>
+            </div>
+          {/each}
+        </div>
+        <div class="settings-actions">
+          <button class="primary" type="submit" disabled={!!busy}>Save</button>
+          <button type="button" disabled={!!busy || !status.signed_in} onclick={() => sortMail(true)}>Sort inbox</button>
+        </div>
+        {#if error}<p class="error">{error}</p>{/if}
+      </form>
+    {:else if open}
       <header class="reader-head">
         <h1>{open.subject || "(no subject)"}</h1>
       </header>
+      {#if open.tags.length}
+        <div class="preview-tags">
+          {#each open.tags as tag (tag.kind + tag.name)}
+            <span class="tag" class:jev={tag.kind === "jev"}>
+              <i style={tag.color ? `background:${tag.color}` : ""}></i>{tag.name}
+            </span>
+          {/each}
+        </div>
+      {/if}
       <div class="meta">{open.from} · {when(open.date_ms)}</div>
       {#if open.html}
         <div class="html-mail" use:renderMail={open.html}></div>

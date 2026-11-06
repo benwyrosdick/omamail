@@ -83,6 +83,7 @@ mod tests {
             snippet: String::new(),
             unread: false,
             label_ids: vec!["INBOX".into()],
+            category: None,
         }
     }
 }

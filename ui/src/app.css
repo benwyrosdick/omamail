@@ -143,6 +143,110 @@ button.primary {
   flex: none;
 }
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+.filters button,
+.settings button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.filters button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings {
+  overflow: auto;
+  padding: 0 20px 28px;
+  display: grid;
+  gap: 16px;
+  user-select: text;
+}
+
+.settings label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.settings input[type="password"],
+.settings input[type="text"],
+.category-edit input {
+  font: inherit;
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.settings .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.categories h2 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.categories-head,
+.settings-actions,
+.category-edit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.category-edit.dragging {
+  opacity: 0.45;
+}
+
+.handle {
+  width: 1.2em;
+  flex: none;
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  text-align: center;
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+.categories-head {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.category-edit input.name {
+  width: 8.5em;
+  flex: none;
+}
+
+.category-edit input.description {
+  flex: 1;
+  min-width: 0;
+}
+
+.categories {
+  display: grid;
+  gap: 8px;
+}
+
 .list {
   position: relative;
   display: flex;
@@ -230,8 +334,54 @@ button.primary {
   grid-column: 2;
 }
 
-.row .snippet {
+.row .snippet,
+.row .tags {
   grid-column: 1 / -1;
+}
+
+.tags,
+.preview-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.preview-tags {
+  padding: 0 16px 8px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px 7px 1px 5px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.tag.jev {
+  color: var(--text);
+}
+
+.tag i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.category-edit input[type="color"] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  flex: none;
 }
 
 .empty {

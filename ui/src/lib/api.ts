@@ -28,11 +28,31 @@ export type InboxItem = {
   date_ms: number | null;
   snippet: string;
   unread: boolean;
+  category: string | null;
+  tags: Tag[];
+};
+
+export type Tag = {
+  name: string;
+  color: string | null;
+  kind: "gmail" | "jev" | string;
 };
 
 export type MessageView = InboxItem & {
   plain_text: string;
   html: string | null;
+};
+
+export type Category = {
+  name: string;
+  description: string;
+  color: string;
+};
+
+export type MailSettings = {
+  key_configured: boolean;
+  jev_enabled: boolean;
+  categories: Category[];
 };
 
 export const FALLBACK: Palette = {
@@ -81,4 +101,11 @@ export const api = {
   inbox: () => invoke<InboxItem[]>("inbox"),
   message: (id: string) => invoke<MessageView>("message", { id }),
   openLink: (url: string) => invoke<void>("open_link", { url }),
+  settings: () => invoke<MailSettings>("settings"),
+  saveSettings: (update: {
+    api_key?: string | null;
+    jev_enabled: boolean;
+    categories: Category[];
+  }) => invoke<MailSettings>("save_settings", { update }),
+  classify: (all = false) => invoke<number>("classify", { all }),
 };

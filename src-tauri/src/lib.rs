@@ -47,6 +47,30 @@ async fn message(
 }
 
 #[tauri::command]
+async fn settings(state: tauri::State<'_, Services>) -> Result<omamail_app::MailSettings, String> {
+    commands::mail_settings(&state)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn save_settings(
+    state: tauri::State<'_, Services>,
+    update: omamail_app::SettingsUpdate,
+) -> Result<omamail_app::MailSettings, String> {
+    commands::save_settings(&state, update)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn classify(state: tauri::State<'_, Services>, all: Option<bool>) -> Result<usize, String> {
+    commands::classify(&state, all.unwrap_or(false))
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
     let url = url.trim();
     if !is_openable_link(url) {
@@ -102,7 +126,17 @@ pub fn run() {
     tauri::Builder::default()
         .manage(services)
         .invoke_handler(tauri::generate_handler![
-            theme, status, login, logout, sync, inbox, message, open_link
+            theme,
+            status,
+            login,
+            logout,
+            sync,
+            inbox,
+            message,
+            open_link,
+            settings,
+            save_settings,
+            classify
         ])
         .setup(|app| {
             if let Some(watcher) = watch_theme(app.handle().clone()) {

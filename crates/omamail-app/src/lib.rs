@@ -3,6 +3,7 @@
 
 mod cli;
 pub mod commands;
+mod jev;
 mod oauth_config;
 mod paths;
 mod theme;
@@ -10,8 +11,10 @@ mod tokens;
 
 pub use cli::{dispatch, Launch};
 pub use commands::{
-    inbox, login, logout, message, status, sync, InboxItem, MessageView, Session, Status,
+    classify, inbox, login, logout, mail_settings, message, save_settings, status, sync, InboxItem,
+    MailSettings, MessageView, Session, SettingsUpdate, Status,
 };
+pub use jev::Category;
 pub use oauth_config::OauthConfig;
 pub use paths::AppPaths;
 pub use theme::{colors_path, current_palette, parse_colors, Palette};
