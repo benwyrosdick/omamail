@@ -152,17 +152,28 @@ button.primary {
 
 .hint {
   margin-top: auto;
+  display: grid;
+  gap: 5px;
   color: var(--muted);
   font-size: 12px;
-  display: grid;
-  gap: 4px;
 }
 
-.hint kbd {
-  display: inline-block;
-  min-width: 3.2em;
+.hint div {
+  display: grid;
+  grid-template-columns: 3.4em minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.hint dt,
+.hint dd {
+  margin: 0;
+}
+
+.hint dt {
   color: var(--text);
-  font-family: inherit;
+  font-weight: 550;
+  letter-spacing: 0.02em;
 }
 
 .list {

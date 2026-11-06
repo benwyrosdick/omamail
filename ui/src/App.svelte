@@ -184,11 +184,11 @@
     </div>
     {#if busy}<p class="busy">{busy}</p>{/if}
     {#if error}<p class="error">{error}</p>{/if}
-    <div class="hint">
-      <div><kbd>j k</kbd> move</div>
-      <div><kbd>enter</kbd> open</div>
-      <div><kbd>r</kbd> sync</div>
-    </div>
+    <dl class="hint">
+      <div><dt>j k</dt><dd>Up / down</dd></div>
+      <div><dt>enter</dt><dd>Open</dd></div>
+      <div><dt>r</dt><dd>Refresh</dd></div>
+    </dl>
   </aside>
 
   <section class="list">
