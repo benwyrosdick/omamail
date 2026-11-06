@@ -1,0 +1,47 @@
+Cargo.lock
+  s_cbb86680673ad1::t_d5a6aa14d0dd1b 1-5325
+crates/omamail-app/src/cli.rs
+  s_cbb86680673ad1::t_d479784331d05a 1-270
+crates/omamail-app/src/commands.rs
+  s_cbb86680673ad1::t_84f10bb0489042 1-301
+crates/omamail-app/src/lib.rs
+  s_cbb86680673ad1::t_9daa4ab8dd4b1d 1-39
+crates/omamail-app/src/oauth_config.rs
+  s_cbb86680673ad1::t_d23a6109a67b65 1-106
+crates/omamail-app/src/theme.rs
+  s_cbb86680673ad1::t_1f7bc67bb26c0a 1-215
+crates/omamail-google/src/auth.rs
+  s_cbb86680673ad1::t_ab130d4369a306 1-260
+crates/omamail-google/src/client.rs
+  s_cbb86680673ad1::t_50d2cb9113c1fd 1-407
+crates/omamail-google/src/lib.rs
+  s_cbb86680673ad1::t_87b7acd8bbe481 1-184
+crates/omamail-store/src/lib.rs
+  s_cbb86680673ad1::t_5c2bd0fd5ff310 1-386
+crates/omamail-sync/src/lib.rs
+  s_cbb86680673ad1::t_3181fd278a95c4 1-88
+package-lock.json
+  s_cbb86680673ad1::t_234729c4031dfd 1-247
+src-tauri/src/lib.rs
+  s_cbb86680673ad1::t_7aa26f88520a5c 1-97
+src-tauri/tauri.conf.json
+  s_cbb86680673ad1::t_d83ac8f7617c67 1-35
+ui/package-lock.json
+  s_cbb86680673ad1::t_d3f882d05316d4 1-1467
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93ff1309e8429538fb579b41b5005cd8bc322b1a",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
