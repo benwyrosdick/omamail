@@ -328,6 +328,7 @@ button.primary {
 
 .row.unread {
   border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .row.selected {
@@ -336,6 +337,7 @@ button.primary {
 
 .row .subject {
   font-weight: 450;
+  color: color-mix(in srgb, var(--text) 62%, var(--muted));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -344,16 +346,33 @@ button.primary {
 .row .from,
 .row .snippet,
 .row .when {
-  color: var(--muted);
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
   font-size: 12.5px;
+  font-weight: 450;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.row.unread .subject,
+.row.unread .subject {
+  font-weight: 750;
+  color: var(--text);
+}
+
+.row.unread .subject::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+}
+
 .row.unread .from,
-.row.unread .snippet {
+.row.unread .snippet,
+.row.unread .when {
   font-weight: 650;
   color: var(--text);
 }

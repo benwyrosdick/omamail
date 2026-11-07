@@ -281,6 +281,11 @@ async fn load_gmail_page(
         .list_page(query, page_token, INBOX_LIMIT)
         .await
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    // A fresh inbox fetch is the new top of the mailbox. Anything still
+    // cached as inbox but absent from this page was deleted or archived in Gmail.
+    if query.is_none() && page_token.is_none() {
+        omamail_store::retain_inbox(&services.db, account_id, &page.messages).await?;
+    }
     let added = omamail_store::upsert_messages(&services.db, account_id, &page.messages).await?;
     if query.is_none() {
         omamail_store::set_setting(

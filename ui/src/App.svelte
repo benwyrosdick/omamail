@@ -101,11 +101,32 @@
   }
 
   function moveCategory(from: number, to: number) {
-    if (from === to) return;
+    if (from === to || to < 0 || to >= categoryDraft.length) return;
     const next = [...categoryDraft];
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
     categoryDraft = next;
+    dragIndex = to;
+  }
+
+  function onHandleDown(event: PointerEvent, index: number) {
+    event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
+    dragIndex = index;
+  }
+
+  function onHandleMove(event: PointerEvent) {
+    if (dragIndex === null) return;
+    const under = document.elementFromPoint(event.clientX, event.clientY);
+    const row = under?.closest(".category-edit");
+    if (!row) return;
+    const rows = [...document.querySelectorAll(".settings .category-edit")];
+    moveCategory(dragIndex, rows.indexOf(row));
+  }
+
+  function onHandleUp() {
+    dragIndex = null;
   }
 
   async function sortMail(all = false) {
@@ -558,22 +579,17 @@
             <button type="button" onclick={addCategory}>Add</button>
           </div>
           {#each categoryDraft as category, index (index)}
-            <div
-              class="category-edit"
-              class:dragging={dragIndex === index}
-              ondragover={(event) => event.preventDefault()}
-              ondrop={() => {
-                if (dragIndex !== null) moveCategory(dragIndex, index);
-                dragIndex = null;
-              }}
-            >
+            <div class="category-edit" class:dragging={dragIndex === index}>
               <span
                 class="handle"
-                draggable="true"
+                role="button"
+                tabindex="0"
                 title="Drag to reorder"
                 aria-label="Drag to reorder"
-                ondragstart={() => (dragIndex = index)}
-                ondragend={() => (dragIndex = null)}>⠿</span
+                onpointerdown={(event) => onHandleDown(event, index)}
+                onpointermove={onHandleMove}
+                onpointerup={onHandleUp}
+                onpointercancel={onHandleUp}>⠿</span
               >
               <input type="color" bind:value={category.color} aria-label="Color for {category.name}" />
               <input class="name" placeholder="Name" bind:value={category.name} />

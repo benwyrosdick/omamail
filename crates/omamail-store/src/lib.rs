@@ -204,6 +204,47 @@ pub async fn accounts(pool: &SqlitePool) -> anyhow::Result<Vec<Account>> {
 
 /// Replace the cached inbox with `messages`. Rows not in the new set are
 /// dropped so the list matches the latest sync, not a growing union.
+/// Drop cached inbox rows that Gmail did not return on a fresh first page.
+/// Bodies for those rows go with them. Categories on rows that remain are kept.
+pub async fn retain_inbox(
+    pool: &SqlitePool,
+    account_id: i64,
+    keep: &[MessageSummary],
+) -> anyhow::Result<()> {
+    let mut tx = pool.begin().await.context("begin inbox retain")?;
+    sqlx::query("CREATE TEMP TABLE IF NOT EXISTS keep_ids (id TEXT PRIMARY KEY)")
+        .execute(&mut *tx)
+        .await
+        .context("create keep_ids")?;
+    sqlx::query("DELETE FROM keep_ids")
+        .execute(&mut *tx)
+        .await
+        .context("clear keep_ids")?;
+    for message in keep {
+        sqlx::query("INSERT OR IGNORE INTO keep_ids (id) VALUES (?1)")
+            .bind(&message.id)
+            .execute(&mut *tx)
+            .await
+            .context("remember kept id")?;
+    }
+    sqlx::query(
+        "DELETE FROM messages WHERE account_id = ?1 AND label_ids LIKE '%\"INBOX\"%' AND gmail_id NOT IN (SELECT id FROM keep_ids)",
+    )
+    .bind(account_id)
+    .execute(&mut *tx)
+    .await
+    .context("drop inbox messages Gmail no longer lists")?;
+    sqlx::query(
+        "DELETE FROM bodies WHERE account_id = ?1 AND gmail_id NOT IN (SELECT gmail_id FROM messages WHERE account_id = ?1)",
+    )
+    .bind(account_id)
+    .execute(&mut *tx)
+    .await
+    .context("drop bodies for removed messages")?;
+    tx.commit().await.context("commit inbox retain")?;
+    Ok(())
+}
+
 pub async fn upsert_messages(
     pool: &SqlitePool,
     account_id: i64,
