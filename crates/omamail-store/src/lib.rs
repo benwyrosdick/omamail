@@ -431,6 +431,40 @@ pub async fn gmail_labels(pool: &SqlitePool, account_id: i64) -> anyhow::Result<
     }
 }
 
+pub async fn remove_message(
+    pool: &SqlitePool,
+    account_id: i64,
+    gmail_id: &str,
+) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM messages WHERE account_id = ?1 AND gmail_id = ?2")
+        .bind(account_id)
+        .bind(gmail_id)
+        .execute(pool)
+        .await
+        .context("remove message")?;
+    sqlx::query("DELETE FROM bodies WHERE account_id = ?1 AND gmail_id = ?2")
+        .bind(account_id)
+        .bind(gmail_id)
+        .execute(pool)
+        .await
+        .context("remove body")?;
+    Ok(())
+}
+
+pub async fn mark_read(
+    pool: &SqlitePool,
+    account_id: i64,
+    gmail_id: &str,
+) -> anyhow::Result<()> {
+    sqlx::query("UPDATE messages SET unread = 0 WHERE account_id = ?1 AND gmail_id = ?2")
+        .bind(account_id)
+        .bind(gmail_id)
+        .execute(pool)
+        .await
+        .context("mark read")?;
+    Ok(())
+}
+
 pub async fn set_category(
     pool: &SqlitePool,
     account_id: i64,

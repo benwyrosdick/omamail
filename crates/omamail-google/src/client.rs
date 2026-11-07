@@ -113,6 +113,31 @@ impl GoogleClient {
         Ok(labels.iter().filter_map(parse_label).collect())
     }
 
+    pub async fn modify(
+        &self,
+        id: &str,
+        add: &[&str],
+        remove: &[&str],
+    ) -> Result<(), MailError> {
+        let url = format!(
+            "{GMAIL_API}/users/me/messages/{}/modify",
+            urlencoding_path(id)
+        );
+        self.post_json(
+            &url,
+            &serde_json::json!({ "addLabelIds": add, "removeLabelIds": remove }),
+        )
+        .await
+    }
+
+    pub async fn trash(&self, id: &str) -> Result<(), MailError> {
+        let url = format!(
+            "{GMAIL_API}/users/me/messages/{}/trash",
+            urlencoding_path(id)
+        );
+        self.post_json(&url, &serde_json::json!({})).await
+    }
+
     pub async fn fetch_body(&self, id: &str) -> Result<MailBody, MailError> {
         let url = format!(
             "{GMAIL_API}/users/me/messages/{}?format=full",
@@ -131,6 +156,26 @@ impl GoogleClient {
         );
         let raw: serde_json::Value = self.get_json(&url).await?;
         parse_message(&raw).map_err(MailError::msg)
+    }
+
+    async fn post_json(&self, url: &str, body: &serde_json::Value) -> Result<(), MailError> {
+        let response = self
+            .http
+            .post(url)
+            .bearer_auth(&self.access_token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|err| MailError::msg(format!("gmail unreachable: {err}")))?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(MailError::Remote {
+                status: status.as_u16(),
+                message: gmail_error_message(status.as_u16(), &text),
+            });
+        }
+        Ok(())
     }
 
     async fn get_json<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T, MailError> {
@@ -427,6 +472,8 @@ fn gmail_error_message(status: u16, body: &str) -> String {
     let message = parsed.unwrap_or_else(|| truncate(body, 280));
     if body.contains("accessNotConfigured") || message.contains("Gmail API has not been used") {
         format!("{message} Enable the Gmail API on the Google Cloud project that owns this OAuth client.")
+    } else if body.contains("insufficient") || message.contains("Insufficient Permission") {
+        format!("{message} Sign out and connect Google again so OmaMail can archive, delete, and move mail.")
     } else if status == 401 || status == 403 {
         message
     } else {

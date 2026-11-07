@@ -34,6 +34,8 @@
   let categoryDraft = $state<Category[]>([]);
   let categoryFilter = $state("all");
   let dragIndex = $state<number | null>(null);
+  let moveOpen = $state(false);
+  let folders = $state<{ id: string; name: string }[]>([]);
 
   const visible = $derived(
     categoryFilter === "all"
@@ -160,8 +162,21 @@
 
   async function openCurrent() {
     if (!current) return;
+    const id = current.id;
+    const wasUnread = current.unread;
     try {
-      open = await api.message(current.id);
+      open = await api.message(id);
+      if (wasUnread) {
+        messages = messages.map((message) =>
+          message.id === id ? { ...message, unread: false } : message,
+        );
+        void api.act("read", id).catch((err) => {
+          error = String(err);
+          messages = messages.map((message) =>
+            message.id === id ? { ...message, unread: true } : message,
+          );
+        });
+      }
     } catch (err) {
       error = String(err);
     }
@@ -186,9 +201,61 @@
     } else if (event.key === "Enter") {
       event.preventDefault();
       void openCurrent();
-    } else if (event.key === "r") {
+    } else if (event.key === "r" && !event.shiftKey) {
       event.preventDefault();
       void sync();
+    } else if (settingsOpen || !current) {
+      return;
+    } else if (event.key === "e") {
+      event.preventDefault();
+      void mailAction("archive");
+    } else if (event.key === "#" || event.key === "Delete") {
+      event.preventDefault();
+      void mailAction("trash");
+    } else if (event.key === "!") {
+      event.preventDefault();
+      void mailAction("spam");
+    } else if (event.key === "v") {
+      event.preventDefault();
+      void toggleMove();
+    }
+  }
+
+  async function toggleMove() {
+    moveOpen = !moveOpen;
+    if (!moveOpen) return;
+    try {
+      folders = await api.folders();
+    } catch (err) {
+      error = String(err);
+      moveOpen = false;
+    }
+  }
+
+  async function mailAction(kind: string, labelId?: string) {
+    if (!current || busy) return;
+    const id = current.id;
+    const index = selected;
+    busy = kind === "read" ? "Marking read…" : "Updating Gmail…";
+    error = null;
+    try {
+      await api.act(kind, id, labelId);
+      if (kind === "read") {
+        messages = messages.map((message) =>
+          message.id === id ? { ...message, unread: false } : message,
+        );
+        if (open?.id === id) open = { ...open, unread: false };
+      } else {
+        messages = messages.filter((message) => message.id !== id);
+        open = null;
+        selected = Math.max(0, Math.min(index, Math.max(visible.length - 1, 0)));
+        if (current) await openCurrent();
+      }
+      moveOpen = false;
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = null;
     }
   }
 
@@ -426,6 +493,29 @@
         </div>
       {/if}
       <div class="meta">{open.from} · {when(open.date_ms)}</div>
+      <div class="action-bar">
+        <button title="Archive (e)" disabled={!!busy} onclick={() => mailAction("archive")}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v11H4z"/><path d="M4 7l8 6 8-6"/><path d="M12 3v8"/><path d="M9 8l3 3 3-3"/></svg>
+        </button>
+        <button title="Report spam (!)" disabled={!!busy} onclick={() => mailAction("spam")}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6z"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+        </button>
+        <button title="Delete (#)" disabled={!!busy} onclick={() => mailAction("trash")}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14"/><path d="M9 7V5h6v2"/><path d="M8 7l1 12h6l1-12"/></svg>
+        </button>
+        <button title="Move (v)" disabled={!!busy} onclick={toggleMove}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h6l2 2h8v9H4z"/></svg>
+        </button>
+        {#if moveOpen}
+          <div class="move-menu">
+            {#each folders as folder (folder.id)}
+              <button type="button" onclick={() => mailAction("move", folder.id)}>{folder.name}</button>
+            {:else}
+              <p>No folders yet. Refresh, then try again.</p>
+            {/each}
+          </div>
+        {/if}
+      </div>
       {#if open.html}
         <div class="html-mail" use:renderMail={open.html}></div>
       {:else}

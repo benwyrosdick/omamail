@@ -17,7 +17,7 @@ Until the Cloud app is verified, Google shows an "unverified app" warning, and s
 1. APIs & Services → OAuth consent screen.
 2. User type: External is fine. Publishing is not required.
 3. Add your Google account under **Test users**. Without this, sign-in fails with `access_denied` even when the password is right.
-4. Scopes the app will request: `openid`, `email` / `userinfo.email`, and `https://www.googleapis.com/auth/gmail.readonly`. You can add them on the consent screen or let the first sign-in prompt for them.
+4. Scopes the app will request: `openid`, `email`, and `https://www.googleapis.com/auth/gmail.modify`. Modify covers reading, archiving, trashing, spam, and moving. It does not include send. If you previously consented to readonly only, sign out and connect again.
 
 ## 3. Client id
 

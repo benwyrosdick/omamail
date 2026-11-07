@@ -157,6 +157,83 @@ pub async fn sync(services: &Services) -> anyhow::Result<usize> {
     Ok(synced)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct Folder {
+    pub id: String,
+    pub name: String,
+}
+
+pub async fn folders(services: &Services) -> anyhow::Result<Vec<Folder>> {
+    let Some(account) = signed_in_account(services).await? else {
+        return Ok(Vec::new());
+    };
+    let mut folders = omamail_store::gmail_labels(&services.db, account.id)
+        .await?
+        .into_iter()
+        .filter(|label| label.id.starts_with("Label_"))
+        .map(|label| Folder {
+            id: label.id,
+            name: label.name,
+        })
+        .collect::<Vec<_>>();
+    folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(folders)
+}
+
+pub async fn act(
+    services: &Services,
+    kind: &str,
+    id: &str,
+    label_id: Option<&str>,
+) -> anyhow::Result<()> {
+    let account = require_account(services).await?;
+    let access = access_token(services, &account.email).await?;
+    let client = GoogleClient::new(access)?;
+    match kind {
+        "archive" => {
+            client
+                .modify(id, &[], &["INBOX"])
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+            omamail_store::remove_message(&services.db, account.id, id).await?;
+        }
+        "trash" => {
+            client
+                .trash(id)
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+            omamail_store::remove_message(&services.db, account.id, id).await?;
+        }
+        "spam" => {
+            client
+                .modify(id, &["SPAM"], &["INBOX"])
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+            omamail_store::remove_message(&services.db, account.id, id).await?;
+        }
+        "read" => {
+            client
+                .modify(id, &[], &["UNREAD"])
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+            omamail_store::mark_read(&services.db, account.id, id).await?;
+        }
+        "move" => {
+            let label = label_id.ok_or_else(|| anyhow::anyhow!("choose a folder"))?;
+            if !label.starts_with("Label_") {
+                anyhow::bail!("that is not a mail folder");
+            }
+            client
+                .modify(id, &[label], &["INBOX"])
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+            omamail_store::remove_message(&services.db, account.id, id).await?;
+        }
+        other => anyhow::bail!("unknown action {other}"),
+    }
+    Ok(())
+}
+
 pub async fn inbox(services: &Services) -> anyhow::Result<Vec<InboxItem>> {
     let Some(account) = signed_in_account(services).await? else {
         return Ok(Vec::new());

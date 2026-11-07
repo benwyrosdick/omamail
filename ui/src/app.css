@@ -315,10 +315,6 @@ button.primary {
   text-overflow: ellipsis;
 }
 
-.row.unread .subject {
-  font-weight: 650;
-}
-
 .row .from,
 .row .snippet,
 .row .when {
@@ -327,6 +323,13 @@ button.primary {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.row.unread .subject,
+.row.unread .from,
+.row.unread .snippet {
+  font-weight: 650;
+  color: var(--text);
 }
 
 .row .when {
@@ -348,6 +351,60 @@ button.primary {
 
 .preview-tags {
   padding: 0 16px 8px;
+}
+
+.action-bar {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 16px 10px;
+}
+
+.action-bar > button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.action-bar svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.move-menu {
+  position: absolute;
+  top: 46px;
+  left: 16px;
+  z-index: 3;
+  min-width: 200px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, black 35%, transparent);
+}
+
+.move-menu button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 6px;
+}
+
+.move-menu p {
+  margin: 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .tag {

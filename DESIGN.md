@@ -18,7 +18,7 @@ GTK was not used, for the same reason OmaCal skipped it: a later macOS build sho
 
 Desktop PKCE. A gitignored `oauth.local.toml` can be compiled into a local binary. It is not committed. Env and `~/.config/omamail/oauth.toml` override it. Secrets are sent to Google and never logged.
 
-Scopes: `openid`, `email`, `gmail.readonly`. Not modify, not send.
+Scopes: `openid`, `email`, `gmail.modify`. Not send.
 
 `prompt=consent select_account` and `access_type=offline` so a repeat sign-in still returns a refresh token and the account chooser still appears.
 

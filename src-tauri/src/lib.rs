@@ -71,6 +71,25 @@ async fn classify(state: tauri::State<'_, Services>, all: Option<bool>) -> Resul
 }
 
 #[tauri::command]
+async fn folders(state: tauri::State<'_, Services>) -> Result<Vec<omamail_app::commands::Folder>, String> {
+    commands::folders(&state)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn act(
+    state: tauri::State<'_, Services>,
+    kind: String,
+    id: String,
+    label_id: Option<String>,
+) -> Result<(), String> {
+    commands::act(&state, &kind, &id, label_id.as_deref())
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
     let url = url.trim();
     if !is_openable_link(url) {
@@ -136,7 +155,9 @@ pub fn run() {
             open_link,
             settings,
             save_settings,
-            classify
+            classify,
+            folders,
+            act
         ])
         .setup(|app| {
             if let Some(watcher) = watch_theme(app.handle().clone()) {

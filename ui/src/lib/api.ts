@@ -108,4 +108,7 @@ export const api = {
     categories: Category[];
   }) => invoke<MailSettings>("save_settings", { update }),
   classify: (all = false) => invoke<number>("classify", { all }),
+  folders: () => invoke<{ id: string; name: string }[]>("folders"),
+  act: (kind: string, id: string, labelId?: string) =>
+    invoke<void>("act", { kind, id, labelId: labelId ?? null }),
 };

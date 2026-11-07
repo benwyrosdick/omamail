@@ -7,9 +7,8 @@ use sha2::{Digest, Sha256};
 pub const AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 
-/// Readonly Gmail plus enough OpenID to learn the account email and subject.
-/// Send, modify, and settings scopes are intentionally not requested.
-pub const GMAIL_SCOPE: &str = "openid email https://www.googleapis.com/auth/gmail.readonly";
+/// Read and change mail (archive, trash, spam, labels). Not send.
+pub const GMAIL_SCOPE: &str = "openid email https://www.googleapis.com/auth/gmail.modify";
 
 pub struct Pkce {
     pub verifier: String,
@@ -229,7 +228,7 @@ mod tests {
                 || url.contains("prompt=consent%20select_account")
         );
         assert!(url.contains("code_challenge_method=S256"));
-        assert!(url.contains("gmail.readonly"));
+        assert!(url.contains("gmail.modify"));
         assert!(!url.contains("client_secret"));
         assert!(!url.contains(&pkce.verifier));
     }
