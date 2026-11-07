@@ -1,0 +1,25 @@
+ui/src/app.css
+  s_cbb86680673ad1::t_d816b36858e97c 331,340,349,351,357-372,374-375
+crates/omamail-store/src/lib.rs
+  s_cbb86680673ad1::t_205ffc37516fb7 207-247
+crates/omamail-app/src/commands.rs
+  s_cbb86680673ad1::t_e8e7afdb93094a 284-288
+ui/src/App.svelte
+  s_cbb86680673ad1::t_277910db203d58 104,109-129,582,585-586,589-592
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9cc16bbcff161e831fed80a2f704d18969caef6",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
