@@ -43,6 +43,21 @@ Keyring service: `omamail`
 
 `OMAMAIL_ROOT` points both directories at `<root>/config` and `<root>/data` for a scratch run.
 
+## Install
+
+From a checkout, this builds the release binary and adds a launcher entry:
+
+```bash
+./scripts/install.sh
+```
+
+It installs `~/.local/bin/omamail`, `~/.local/share/applications/omamail.desktop`, and the icon under `~/.local/share/icons/hicolor/`. Put a Desktop client in `crates/omamail-app/oauth.local.toml` before running it if you want that client compiled in.
+
+```bash
+./scripts/uninstall.sh
+./scripts/uninstall.sh --purge   # also removes ~/.config/omamail and the local database
+```
+
 ## Develop
 
 ```bash

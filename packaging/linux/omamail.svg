@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="OmaMail">
+  <rect width="512" height="512" rx="112" fill="#1c1e2a"/>
+  <rect x="108" y="168" width="296" height="196" rx="28" fill="none" stroke="#8eb4f8" stroke-width="28"/>
+  <path d="M128 196 L256 292 L384 196" fill="none" stroke="#8eb4f8" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="372" cy="156" r="30" fill="#4dd6c8"/>
+</svg>
