@@ -3,14 +3,9 @@ use anyhow::Context;
 use serde::Deserialize;
 use std::path::Path;
 
-/// Google Desktop client baked into the binary, same model as OmaCal.
-/// An installed-app secret identifies the app. It is not a user password and
-/// cannot be kept confidential once the binary ships. Users still consent as
-/// themselves. Override with `oauth.toml` or the environment for a different
-/// Cloud project.
-const BUNDLED_CLIENT_ID: &str =
-    "";
-const BUNDLED_CLIENT_SECRET: &str = "";
+/// Filled by build.rs from the gitignored `oauth.local.toml`, when that file
+/// exists. Empty in a clean checkout. Not a substitute for the user's consent.
+include!(concat!(env!("OUT_DIR"), "/bundled_oauth.rs"));
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct OauthConfig {
@@ -232,7 +227,11 @@ mod tests {
         assert!(!paths.oauth_file().exists());
         let rendered = format!("{resolved:?}");
         assert!(rendered.contains("<redacted>"));
-        assert!(!rendered.contains("GOCSPX-"));
+        if let Some(secret) = OauthConfig::bundled().client_secret.as_deref() {
+            if !secret.is_empty() {
+                assert!(!rendered.contains(secret));
+            }
+        }
 
         fs::create_dir_all(&paths.config_dir).unwrap();
         fs::write(

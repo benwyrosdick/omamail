@@ -1,0 +1,5 @@
+# Copy to oauth.local.toml in this directory. That file is gitignored and
+# compiled into local builds. Do not commit it.
+#
+# client_id = "your-id.apps.googleusercontent.com"
+# client_secret = "your-desktop-client-secret"

@@ -1,10 +1,10 @@
 # Google OAuth client
 
-The Desktop client id and secret are compiled into OmaMail, the same way OmaCal ships its Google client. People sign in with their own Google account. The baked-in secret identifies the app to Google. It is not their password, and it does not let the app read mail they have not consented to. Google does not treat an installed-app secret as confidential — anyone can extract it from the binary — so it is not a private key you hand out separately.
+A local build can compile in a Desktop client from the gitignored file `crates/omamail-app/oauth.local.toml` (copy `oauth.local.toml.example`). That file is never committed. People still sign in with their own Google account. The client secret identifies the app to Google. It is not their password, and it does not let the app read mail they have not consented to.
 
 Until the Cloud app is verified, Google shows an "unverified app" warning, and sign-in only works for accounts listed as test users. Add each person under the consent screen, or publish and verify the app, or other people stop at `access_denied`.
 
-`omamail auth login` uses the baked-in client. It does not write the secret into `oauth.toml`.
+`omamail auth login` uses that local client when it was compiled in. It does not write the secret into `oauth.toml` or into git.
 
 ## 1. Cloud project
 
@@ -25,7 +25,7 @@ Until the Cloud app is verified, Google shows an "unverified app" warning, and s
 2. Application type: **Desktop app**. A Web client will reject the loopback redirect.
 3. Copy the client id. It looks like `something.apps.googleusercontent.com`.
 
-You only need your own client if you are replacing the baked-in one. Copy the client secret too. Google's token endpoint requires it for a Desktop client. Keep that override out of git.
+Copy the client secret too. Google's token endpoint requires it for a Desktop client. Keep it in `oauth.local.toml` or `~/.config/omamail/oauth.toml`, never in git.
 
 ## 4. Sign in
 
@@ -33,7 +33,7 @@ You only need your own client if you are replacing the baked-in one. Copy the cl
 omamail auth login
 ```
 
-That opens the browser with the baked-in client. To use a different client, write `~/.config/omamail/oauth.toml` or export `OMAMAIL_GOOGLE_CLIENT_ID` and `OMAMAIL_GOOGLE_CLIENT_SECRET`. The environment wins over the file, and either wins over the baked-in client.
+That opens the browser with the compiled-in client, if `oauth.local.toml` was present at build time. Otherwise set `OMAMAIL_GOOGLE_CLIENT_ID` and `OMAMAIL_GOOGLE_CLIENT_SECRET`, or write `~/.config/omamail/oauth.toml`. The environment wins over the file, and either wins over a compiled-in client.
 
 Do not commit `oauth.toml`. It is gitignored.
 
