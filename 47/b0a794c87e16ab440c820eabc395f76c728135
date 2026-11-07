@@ -1,0 +1,32 @@
+docs/oauth.md
+  s_cbb86680673ad1::t_ef12a6cb6b5099 3,7,28,36
+crates/omamail-app/oauth.local.toml.example
+  s_cbb86680673ad1::t_0dd48e38af5593 1-5
+DESIGN.md
+  s_cbb86680673ad1::t_1c32921b8fa14f 19
+.gitignore
+  s_cbb86680673ad1::t_8acdfcaaab10df 11
+crates/omamail-app/src/oauth_config.rs
+  s_cbb86680673ad1::t_da2b2a66e7c940 6-8
+  s_cbb86680673ad1::t_9429258997e0ff 230-234
+crates/omamail-app/build.rs
+  s_cbb86680673ad1::t_a6f2e05f483296 1-46
+README.md
+  s_cbb86680673ad1::t_507952d857d048 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "47b0a794c87e16ab440c820eabc395f76c728135",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
