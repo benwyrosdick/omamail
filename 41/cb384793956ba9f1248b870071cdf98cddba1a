@@ -1,0 +1,31 @@
+src-tauri/icons/icon.svg
+  s_cbb86680673ad1::t_392bddb0bd6590 1-6
+README.md
+  s_cbb86680673ad1::t_515ea8d75e2186 46-55
+  s_cbb86680673ad1::t_5d4626cf16a084 56-60
+scripts/uninstall.sh
+  s_cbb86680673ad1::t_82b99243939579 1-70
+scripts/install.sh
+  s_cbb86680673ad1::t_d6f7f0a358b8f7 1-103
+  s_cbb86680673ad1::t_b37c7c084eba16 104
+packaging/linux/omamail.desktop
+  s_cbb86680673ad1::t_443240ab98005d 6,9
+packaging/linux/omamail.svg
+  s_cbb86680673ad1::t_90f2535203f8e7 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41cb384793956ba9f1248b870071cdf98cddba1a",
+  "prompts": {},
+  "sessions": {
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
