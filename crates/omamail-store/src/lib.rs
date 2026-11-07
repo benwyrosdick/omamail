@@ -107,12 +107,36 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
     // Cached HTML was sanitized without the sender stylesheet, which left
     // inbox preview text visible. Drop it once so the next open refetches.
     let rev = get_setting(pool, "html_sanitizer").await?;
-    if rev.as_deref() != Some("2") {
+    for (column, ddl) in [
+        (
+            "unsubscribe_url",
+            "ALTER TABLE bodies ADD COLUMN unsubscribe_url TEXT",
+        ),
+        (
+            "unsubscribe_one_click",
+            "ALTER TABLE bodies ADD COLUMN unsubscribe_one_click INTEGER NOT NULL DEFAULT 0",
+        ),
+    ] {
+        if !columns.iter().any(|row| row.get::<String, _>("name") == column)
+            && !sqlx::query("PRAGMA table_info(bodies)")
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default()
+                .iter()
+                .any(|row| row.get::<String, _>("name") == column)
+        {
+            sqlx::query(ddl)
+                .execute(pool)
+                .await
+                .with_context(|| format!("add bodies.{column}"))?;
+        }
+    }
+    if rev.as_deref() != Some("3") {
         sqlx::query("UPDATE bodies SET html = NULL")
             .execute(pool)
             .await
             .context("drop stale html cache")?;
-        set_setting(pool, "html_sanitizer", "2").await?;
+        set_setting(pool, "html_sanitizer", "3").await?;
     }
     Ok(())
 }
@@ -121,6 +145,8 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
 pub struct CachedBody {
     pub plain_text: String,
     pub html: Option<String>,
+    pub unsubscribe_url: Option<String>,
+    pub unsubscribe_one_click: bool,
 }
 
 pub async fn upsert_account(
@@ -346,16 +372,21 @@ pub async fn get_body(
     gmail_id: &str,
 ) -> anyhow::Result<Option<CachedBody>> {
     let row = sqlx::query(
-        "SELECT plain_text, html FROM bodies WHERE account_id = ?1 AND gmail_id = ?2",
+        "SELECT plain_text, html, unsubscribe_url, unsubscribe_one_click FROM bodies WHERE account_id = ?1 AND gmail_id = ?2",
     )
     .bind(account_id)
     .bind(gmail_id)
     .fetch_optional(pool)
     .await
     .context("get body")?;
-    Ok(row.map(|row| CachedBody {
-        plain_text: row.get("plain_text"),
-        html: row.get("html"),
+    Ok(row.map(|row| {
+        let one_click: i64 = row.get("unsubscribe_one_click");
+        CachedBody {
+            plain_text: row.get("plain_text"),
+            html: row.get("html"),
+            unsubscribe_url: row.get("unsubscribe_url"),
+            unsubscribe_one_click: one_click != 0,
+        }
     }))
 }
 
@@ -365,14 +396,18 @@ pub async fn put_body(
     gmail_id: &str,
     plain_text: &str,
     html: Option<&str>,
+    unsubscribe_url: Option<&str>,
+    unsubscribe_one_click: bool,
 ) -> anyhow::Result<()> {
     sqlx::query(
         r#"
-        INSERT INTO bodies (account_id, gmail_id, plain_text, html, fetched_at)
-        VALUES (?1, ?2, ?3, ?4, ?5)
+        INSERT INTO bodies (account_id, gmail_id, plain_text, html, unsubscribe_url, unsubscribe_one_click, fetched_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         ON CONFLICT(account_id, gmail_id) DO UPDATE SET
             plain_text = excluded.plain_text,
             html = excluded.html,
+            unsubscribe_url = excluded.unsubscribe_url,
+            unsubscribe_one_click = excluded.unsubscribe_one_click,
             fetched_at = excluded.fetched_at
         "#,
     )
@@ -380,6 +415,8 @@ pub async fn put_body(
     .bind(gmail_id)
     .bind(plain_text)
     .bind(html)
+    .bind(unsubscribe_url)
+    .bind(i64::from(unsubscribe_one_click))
     .bind(now_ms())
     .execute(pool)
     .await
@@ -599,7 +636,7 @@ mod tests {
         assert_eq!(listed[0].subject, "Newer");
         assert!(listed[0].unread);
 
-        put_body(&pool, id, "b", "body text", Some("<p>body</p>"))
+        put_body(&pool, id, "b", "body text", Some("<p>body</p>"), Some("https://example.com/unsub"), true)
             .await
             .unwrap();
         let cached = get_body(&pool, id, "b").await.unwrap().unwrap();

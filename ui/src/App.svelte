@@ -41,6 +41,7 @@
   let inboxToken = $state<string | null>(null);
   let searchToken = $state<string | null>(null);
   let loadingMore = $state(false);
+  let unsubscribedId = $state<string | null>(null);
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
   const listing = $derived(searchHits ?? messages);
@@ -226,6 +227,25 @@
     } else if (event.key === "v") {
       event.preventDefault();
       void toggleMove();
+    }
+  }
+
+  async function unsubscribe() {
+    if (!open?.unsubscribe_url || busy) return;
+    const id = open.id;
+    busy = "Unsubscribing…";
+    error = null;
+    try {
+      const result = await api.unsubscribe(id);
+      if (result.one_click) {
+        unsubscribedId = id;
+      } else if (result.url) {
+        await api.openLink(result.url);
+      }
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = null;
     }
   }
 
@@ -595,6 +615,14 @@
         <button title="Move (v)" disabled={!!busy} onclick={toggleMove}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h6l2 2h8v9H4z"/></svg>
         </button>
+        {#if open.unsubscribe_url}
+          <button
+            class="unsubscribe"
+            disabled={!!busy || unsubscribedId === open.id}
+            title={open.unsubscribe_one_click ? "One-click unsubscribe" : "Open the unsubscribe page"}
+            onclick={unsubscribe}
+          >{unsubscribedId === open.id ? "Unsubscribed" : "Unsubscribe"}</button>
+        {/if}
         {#if moveOpen}
           <div class="move-menu">
             {#each folders as folder (folder.id)}

@@ -124,6 +124,8 @@ fn parse_label(value: &serde_json::Value) -> Option<GmailLabel> {
 pub struct MailBody {
     pub plain_text: String,
     pub html: Option<String>,
+    pub unsubscribe_url: Option<String>,
+    pub unsubscribe_one_click: bool,
 }
 
 impl GoogleClient {
@@ -382,7 +384,49 @@ pub fn body_from_message(value: &serde_json::Value) -> MailBody {
         let clean = sanitize_html(&raw);
         (!clean.trim().is_empty()).then_some(clean)
     });
-    MailBody { plain_text, html }
+    let (unsubscribe_url, unsubscribe_one_click) = unsubscribe_from_headers(&header_map(value));
+    MailBody {
+        plain_text,
+        html,
+        unsubscribe_url,
+        unsubscribe_one_click,
+    }
+}
+
+/// HTTPS URI from `List-Unsubscribe`. One-click is set only when
+/// `List-Unsubscribe-Post` says so. Mailto links are ignored.
+pub fn unsubscribe_from_headers(
+    headers: &std::collections::HashMap<String, String>,
+) -> (Option<String>, bool) {
+    let Some(raw) = headers.get("list-unsubscribe") else {
+        return (None, false);
+    };
+    let url = https_unsubscribe_uri(raw);
+    let one_click = headers
+        .get("list-unsubscribe-post")
+        .is_some_and(|value| {
+            value
+                .to_ascii_lowercase()
+                .contains("list-unsubscribe=one-click")
+        });
+    let one_click = one_click && url.is_some();
+    (url, one_click)
+}
+
+fn https_unsubscribe_uri(header: &str) -> Option<String> {
+    let mut rest = header;
+    while let Some(start) = rest.find('<') {
+        rest = &rest[start + 1..];
+        let Some(end) = rest.find('>') else {
+            break;
+        };
+        let uri = rest[..end].trim();
+        if uri.len() <= 2000 && uri.to_ascii_lowercase().starts_with("https://") && !uri.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
+            return Some(uri.to_string());
+        }
+        rest = &rest[end + 1..];
+    }
+    None
 }
 
 fn looks_like_html(text: &str) -> bool {
@@ -595,6 +639,30 @@ mod tests {
         assert!(!html.contains("The Dusty Tome"));
         assert!(html.contains("display:none") || html.contains("display: none"));
         assert!(html.contains("Visible"));
+    }
+
+    #[test]
+    fn list_unsubscribe_prefers_https_and_one_click() {
+        let mut headers = std::collections::HashMap::new();
+        headers.insert(
+            "list-unsubscribe".into(),
+            "<mailto:unsub@example.com>, <https://example.com/unsub?id=1>".into(),
+        );
+        headers.insert(
+            "list-unsubscribe-post".into(),
+            "List-Unsubscribe=One-Click".into(),
+        );
+        let (url, one_click) = unsubscribe_from_headers(&headers);
+        assert_eq!(url.as_deref(), Some("https://example.com/unsub?id=1"));
+        assert!(one_click);
+
+        headers.remove("list-unsubscribe-post");
+        let (url, one_click) = unsubscribe_from_headers(&headers);
+        assert!(url.is_some());
+        assert!(!one_click);
+
+        headers.insert("list-unsubscribe".into(), "<mailto:unsub@example.com>".into());
+        assert!(unsubscribe_from_headers(&headers).0.is_none());
     }
 
     #[test]

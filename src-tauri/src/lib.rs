@@ -1,3 +1,4 @@
+mod display;
 mod webkit;
 
 use omamail_app::{colors_path, commands, current_palette, Services};
@@ -108,6 +109,16 @@ async fn act(
 }
 
 #[tauri::command]
+async fn unsubscribe(
+    state: tauri::State<'_, Services>,
+    id: String,
+) -> Result<omamail_app::commands::UnsubscribeResult, String> {
+    commands::unsubscribe(&state, &id)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
     let url = url.trim();
     if !is_openable_link(url) {
@@ -154,6 +165,10 @@ mod tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if !display::ensure_display() {
+        eprintln!("omamail: no Wayland or X11 display. Launch this from the desktop session.");
+        std::process::exit(1);
+    }
     webkit::apply_nvidia_workaround();
     let services = tauri::async_runtime::block_on(Services::open_default()).unwrap_or_else(|err| {
         eprintln!("omamail: could not open the local database: {err}");
@@ -177,7 +192,8 @@ pub fn run() {
             save_settings,
             classify,
             folders,
-            act
+            act,
+            unsubscribe
         ])
         .setup(|app| {
             if let Some(watcher) = watch_theme(app.handle().clone()) {

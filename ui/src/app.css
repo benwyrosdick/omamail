@@ -395,6 +395,13 @@ button.primary {
   place-items: center;
 }
 
+.action-bar > button.unsubscribe {
+  width: auto;
+  margin-left: auto;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
 .action-bar svg {
   width: 16px;
   height: 16px;

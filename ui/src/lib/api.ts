@@ -41,6 +41,8 @@ export type Tag = {
 export type MessageView = InboxItem & {
   plain_text: string;
   html: string | null;
+  unsubscribe_url: string | null;
+  unsubscribe_one_click: boolean;
 };
 
 export type Category = {
@@ -117,4 +119,6 @@ export const api = {
   folders: () => invoke<{ id: string; name: string }[]>("folders"),
   act: (kind: string, id: string, labelId?: string) =>
     invoke<void>("act", { kind, id, labelId: labelId ?? null }),
+  unsubscribe: (id: string) =>
+    invoke<{ one_click: boolean; url: string | null }>("unsubscribe", { id }),
 };

@@ -3,8 +3,8 @@ use anyhow::Context;
 use serde::Deserialize;
 use std::path::Path;
 
-/// Filled by build.rs from the gitignored `oauth.local.toml`, when that file
-/// exists. Empty in a clean checkout. Not a substitute for the user's consent.
+// Filled by build.rs from the gitignored `oauth.local.toml`, when that file
+// exists. Empty in a clean checkout. Not a substitute for the user's consent.
 include!(concat!(env!("OUT_DIR"), "/bundled_oauth.rs"));
 
 #[derive(Clone, PartialEq, Eq)]

@@ -53,6 +53,8 @@ pub struct MessageView {
     pub plain_text: String,
     pub html: Option<String>,
     pub tags: Vec<Tag>,
+    pub unsubscribe_url: Option<String>,
+    pub unsubscribe_one_click: bool,
 }
 
 struct AccessCache {
@@ -339,11 +341,15 @@ pub async fn message(services: &Services, id: &str) -> anyhow::Result<MessageVie
             id,
             &fetched.plain_text,
             Some(fetched.html.as_deref().unwrap_or("")),
+            fetched.unsubscribe_url.as_deref(),
+            fetched.unsubscribe_one_click,
         )
         .await?;
         omamail_store::CachedBody {
             plain_text: fetched.plain_text,
             html: fetched.html,
+            unsubscribe_url: fetched.unsubscribe_url,
+            unsubscribe_one_click: fetched.unsubscribe_one_click,
         }
     };
     Ok(MessageView {
@@ -357,6 +363,52 @@ pub async fn message(services: &Services, id: &str) -> anyhow::Result<MessageVie
         plain_text: body.plain_text,
         html: body.html.filter(|html| !html.is_empty()),
         tags,
+        unsubscribe_url: body
+            .unsubscribe_url
+            .filter(|url| url.starts_with("https://")),
+        unsubscribe_one_click: body.unsubscribe_one_click,
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UnsubscribeResult {
+    pub one_click: bool,
+    pub url: Option<String>,
+}
+
+pub async fn unsubscribe(services: &Services, id: &str) -> anyhow::Result<UnsubscribeResult> {
+    let account = require_account(services).await?;
+    let body = omamail_store::get_body(&services.db, account.id, id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("open the message before unsubscribing"))?;
+    let url = body
+        .unsubscribe_url
+        .filter(|url| url.starts_with("https://") && !url.chars().any(char::is_whitespace))
+        .ok_or_else(|| anyhow::anyhow!("this message has no unsubscribe link"))?;
+    if !body.unsubscribe_one_click {
+        return Ok(UnsubscribeResult {
+            one_click: false,
+            url: Some(url),
+        });
+    }
+    let http = reqwest::Client::builder()
+        .user_agent("omamail/0.1")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    let response = http
+        .post(&url)
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body("List-Unsubscribe=One-Click")
+        .send()
+        .await
+        .map_err(|err| anyhow::anyhow!("unsubscribe request failed: {err}"))?;
+    if !response.status().is_success() {
+        anyhow::bail!("the sender refused the unsubscribe ({})", response.status().as_u16());
+    }
+    Ok(UnsubscribeResult {
+        one_click: true,
+        url: None,
     })
 }
 
