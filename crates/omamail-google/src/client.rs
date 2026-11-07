@@ -327,6 +327,14 @@ fn looks_like_html(text: &str) -> bool {
 /// styles stay so the reader can paint the message instead of its source.
 fn sanitize_html(html: &str) -> String {
     let mut builder = ammonia::Builder::default();
+    // Keep the sender's stylesheet. Inbox preview text is usually a line at
+    // the top that Gmail hides with that CSS; stripping the stylesheet is
+    // what makes the line visible. Drop title/head text instead of letting
+    // it fall into the body when those tags are removed.
+    let mut drop_contents = std::collections::HashSet::new();
+    for tag in ["script", "title", "head", "meta", "link"] {
+        drop_contents.insert(tag);
+    }
     builder
         .add_generic_attributes([
             "style",
@@ -345,6 +353,8 @@ fn sanitize_html(html: &str) -> String {
             "rowspan",
             "target",
         ])
+        .add_tags(["style"])
+        .clean_content_tags(drop_contents)
         .link_rel(Some("noopener noreferrer"));
     builder.clean(html).to_string()
 }
@@ -494,6 +504,22 @@ mod tests {
         assert!(html.contains("color:red") || html.contains("color: red"));
         assert!(!html.to_ascii_lowercase().contains("<script"));
         assert!(!html.to_ascii_lowercase().contains("javascript:"));
+    }
+
+    #[test]
+    fn title_text_does_not_leak_and_stylesheets_are_kept() {
+        let raw = serde_json::json!({
+            "payload": {
+                "mimeType": "text/html",
+                "body": {"data": URL_SAFE_NO_PAD.encode(
+                    b"<title>The Dusty Tome: The Dismal Swamp</title><style>.preheader{display:none}</style><div class=\"preheader\">teaser line</div><p>Visible</p>"
+                )}
+            }
+        });
+        let html = body_from_message(&raw).html.unwrap();
+        assert!(!html.contains("The Dusty Tome"));
+        assert!(html.contains("display:none") || html.contains("display: none"));
+        assert!(html.contains("Visible"));
     }
 
     #[test]

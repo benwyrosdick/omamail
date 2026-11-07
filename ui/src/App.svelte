@@ -201,6 +201,7 @@
         img, video { max-width: 100%; height: auto; }
         a { color: #3566d6; cursor: pointer; }
         table { max-width: 100%; }
+        .preheader, .preview-text, #preheader { display: none !important; }
       </style><div class="sheet">${body}</div>`;
     };
     const onClick = (event: Event) => {

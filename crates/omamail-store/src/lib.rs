@@ -104,6 +104,16 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
     .execute(pool)
     .await
     .context("settings table")?;
+    // Cached HTML was sanitized without the sender stylesheet, which left
+    // inbox preview text visible. Drop it once so the next open refetches.
+    let rev = get_setting(pool, "html_sanitizer").await?;
+    if rev.as_deref() != Some("2") {
+        sqlx::query("UPDATE bodies SET html = NULL")
+            .execute(pool)
+            .await
+            .context("drop stale html cache")?;
+        set_setting(pool, "html_sanitizer", "2").await?;
+    }
     Ok(())
 }
 
