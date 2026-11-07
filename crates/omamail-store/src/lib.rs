@@ -178,6 +178,45 @@ pub async fn accounts(pool: &SqlitePool) -> anyhow::Result<Vec<Account>> {
 
 /// Replace the cached inbox with `messages`. Rows not in the new set are
 /// dropped so the list matches the latest sync, not a growing union.
+pub async fn upsert_messages(
+    pool: &SqlitePool,
+    account_id: i64,
+    messages: &[MessageSummary],
+) -> anyhow::Result<usize> {
+    for message in messages {
+        let labels = serde_json::to_string(&message.label_ids).unwrap_or_else(|_| "[]".into());
+        sqlx::query(
+            r#"
+            INSERT INTO messages (
+                account_id, gmail_id, thread_id, from_addr, subject,
+                date_ms, snippet, unread, label_ids
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(account_id, gmail_id) DO UPDATE SET
+                thread_id = excluded.thread_id,
+                from_addr = excluded.from_addr,
+                subject = excluded.subject,
+                date_ms = excluded.date_ms,
+                snippet = excluded.snippet,
+                unread = excluded.unread,
+                label_ids = excluded.label_ids
+            "#,
+        )
+        .bind(account_id)
+        .bind(&message.id)
+        .bind(&message.thread_id)
+        .bind(&message.from)
+        .bind(&message.subject)
+        .bind(message.date_ms)
+        .bind(&message.snippet)
+        .bind(i64::from(message.unread))
+        .bind(labels)
+        .execute(pool)
+        .await
+        .context("upsert message page")?;
+    }
+    Ok(messages.len())
+}
+
 pub async fn replace_inbox(
     pool: &SqlitePool,
     account_id: i64,
@@ -270,7 +309,7 @@ pub async fn list_inbox(pool: &SqlitePool, account_id: i64) -> anyhow::Result<Ve
         r#"
         SELECT gmail_id, thread_id, from_addr, subject, date_ms, snippet, unread, label_ids, category
         FROM messages
-        WHERE account_id = ?1
+        WHERE account_id = ?1 AND label_ids LIKE '%"INBOX"%'
         ORDER BY date_ms DESC, gmail_id DESC
         "#,
     )

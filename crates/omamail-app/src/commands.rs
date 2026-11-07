@@ -148,13 +148,11 @@ pub async fn sync(services: &Services) -> anyhow::Result<usize> {
     let account = require_account(services).await?;
     let access = access_token(services, &account.email).await?;
     let client = GoogleClient::new(access)?;
-    let synced = omamail_sync::sync_inbox(&services.db, account.id, &client, INBOX_LIMIT)
-        .await
-        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    let page = load_gmail_page(services, &client, account.id, None, None).await?;
     if let Err(err) = refresh_labels(services, &client, account.id).await {
         eprintln!("omamail: could not refresh Gmail labels: {err}");
     }
-    Ok(synced)
+    Ok(page.added)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -232,6 +230,74 @@ pub async fn act(
         other => anyhow::bail!("unknown action {other}"),
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MailPage {
+    pub messages: Vec<InboxItem>,
+    pub next_page_token: Option<String>,
+}
+
+pub async fn load_more(
+    services: &Services,
+    query: Option<String>,
+    page_token: Option<String>,
+) -> anyhow::Result<MailPage> {
+    let account = require_account(services).await?;
+    let access = access_token(services, &account.email).await?;
+    let client = GoogleClient::new(access)?;
+    let query = query.as_deref().map(str::trim).filter(|query| !query.is_empty());
+    let token = page_token.as_deref().filter(|token| !token.is_empty());
+    let page = load_gmail_page(services, &client, account.id, query, token).await?;
+    let labels = omamail_store::gmail_labels(&services.db, account.id).await?;
+    let categories = load_categories(services).await?;
+    let messages = page
+        .messages
+        .into_iter()
+        .map(|message| item_from(message, &labels, &categories))
+        .collect();
+    Ok(MailPage {
+        messages,
+        next_page_token: page.next_page_token,
+    })
+}
+
+struct LoadedPage {
+    added: usize,
+    messages: Vec<MessageSummary>,
+    next_page_token: Option<String>,
+}
+
+async fn load_gmail_page(
+    services: &Services,
+    client: &GoogleClient,
+    account_id: i64,
+    query: Option<&str>,
+    page_token: Option<&str>,
+) -> anyhow::Result<LoadedPage> {
+    let page = client
+        .list_page(query, page_token, INBOX_LIMIT)
+        .await
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    let added = omamail_store::upsert_messages(&services.db, account_id, &page.messages).await?;
+    if query.is_none() {
+        omamail_store::set_setting(
+            &services.db,
+            "inbox_page_token",
+            page.next_page_token.as_deref().unwrap_or(""),
+        )
+        .await?;
+    }
+    Ok(LoadedPage {
+        added,
+        messages: page.messages,
+        next_page_token: page.next_page_token,
+    })
+}
+
+pub async fn inbox_page_token(services: &Services) -> anyhow::Result<Option<String>> {
+    let token = omamail_store::get_setting(&services.db, "inbox_page_token").await?;
+    Ok(token.filter(|token| !token.is_empty()))
 }
 
 pub async fn inbox(services: &Services) -> anyhow::Result<Vec<InboxItem>> {

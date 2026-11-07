@@ -43,24 +43,7 @@ impl MailProvider for GoogleClient {
     }
 
     async fn list_inbox(&self, limit: u32) -> Result<Vec<MessageSummary>, MailError> {
-        let list: ListResponse = self
-            .get_json(&format!(
-                "{GMAIL_API}/users/me/messages?labelIds=INBOX&maxResults={limit}"
-            ))
-            .await?;
-        let ids: Vec<String> = list
-            .messages
-            .unwrap_or_default()
-            .into_iter()
-            .map(|item| item.id)
-            .collect();
-        let futs = ids.iter().map(|id| self.fetch_metadata(id));
-        let fetched = futures_util::future::join_all(futs).await;
-        let mut out = Vec::with_capacity(fetched.len());
-        for item in fetched {
-            out.push(item?);
-        }
-        Ok(out)
+        Ok(self.list_page(None, None, limit).await?.messages)
     }
 
     async fn fetch_plain(&self, id: &str) -> Result<String, MailError> {
@@ -73,7 +56,50 @@ impl MailProvider for GoogleClient {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
+pub struct MessagePage {
+    pub messages: Vec<MessageSummary>,
+    pub next_page_token: Option<String>,
+}
+
+impl GoogleClient {
+    /// `query` searches all mail. Without it, the page is the inbox.
+    pub async fn list_page(
+        &self,
+        query: Option<&str>,
+        page_token: Option<&str>,
+        limit: u32,
+    ) -> Result<MessagePage, MailError> {
+        let mut url = format!("{GMAIL_API}/users/me/messages?maxResults={limit}");
+        if let Some(query) = query.map(str::trim).filter(|query| !query.is_empty()) {
+            url.push_str("&q=");
+            url.push_str(&urlencoding_path(query));
+        } else {
+            url.push_str("&labelIds=INBOX");
+        }
+        if let Some(token) = page_token.filter(|token| !token.is_empty()) {
+            url.push_str("&pageToken=");
+            url.push_str(&urlencoding_path(token));
+        }
+        let list: ListResponse = self.get_json(&url).await?;
+        let ids: Vec<String> = list
+            .messages
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| item.id)
+            .collect();
+        let fetched = futures_util::future::join_all(ids.iter().map(|id| self.fetch_metadata(id))).await;
+        let mut messages = Vec::with_capacity(fetched.len());
+        for item in fetched {
+            messages.push(item?);
+        }
+        Ok(MessagePage {
+            messages,
+            next_page_token: list.next_page_token,
+        })
+    }
+}
+
 pub struct GmailLabel {
     pub id: String,
     pub name: String,
@@ -204,6 +230,8 @@ impl GoogleClient {
 #[derive(Deserialize)]
 struct ListResponse {
     messages: Option<Vec<ListItem>>,
+    #[serde(rename = "nextPageToken")]
+    next_page_token: Option<String>,
 }
 
 #[derive(Deserialize)]

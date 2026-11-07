@@ -254,6 +254,33 @@ button.primary {
   border-right: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
 }
 
+.search {
+  padding: 12px 12px 0;
+}
+
+.search input {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.more {
+  margin: 0;
+  padding: 12px 16px 72px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .list-head,
 .reader-head {
   display: flex;
@@ -279,8 +306,7 @@ button.primary {
 }
 
 .rows {
-  overflow: auto;
-  padding-bottom: 64px;
+  padding-bottom: 8px;
 }
 
 .list > .empty {

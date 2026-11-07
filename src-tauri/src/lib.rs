@@ -37,6 +37,24 @@ async fn inbox(state: tauri::State<'_, Services>) -> Result<Vec<omamail_app::Inb
 }
 
 #[tauri::command]
+async fn inbox_token(state: tauri::State<'_, Services>) -> Result<Option<String>, String> {
+    commands::inbox_page_token(&state)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn load_more(
+    state: tauri::State<'_, Services>,
+    query: Option<String>,
+    page_token: Option<String>,
+) -> Result<omamail_app::commands::MailPage, String> {
+    commands::load_more(&state, query, page_token)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 async fn message(
     state: tauri::State<'_, Services>,
     id: String,
@@ -151,6 +169,8 @@ pub fn run() {
             logout,
             sync,
             inbox,
+            inbox_token,
+            load_more,
             message,
             open_link,
             settings,

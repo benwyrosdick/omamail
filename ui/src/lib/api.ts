@@ -99,6 +99,12 @@ export const api = {
   logout: () => invoke<void>("logout"),
   sync: () => invoke<number>("sync"),
   inbox: () => invoke<InboxItem[]>("inbox"),
+  inboxToken: () => invoke<string | null>("inbox_token"),
+  loadMore: (query: string | null, pageToken: string | null) =>
+    invoke<{ messages: InboxItem[]; next_page_token: string | null }>("load_more", {
+      query,
+      pageToken,
+    }),
   message: (id: string) => invoke<MessageView>("message", { id }),
   openLink: (url: string) => invoke<void>("open_link", { url }),
   settings: () => invoke<MailSettings>("settings"),

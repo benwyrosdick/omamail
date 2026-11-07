@@ -36,11 +36,18 @@
   let dragIndex = $state<number | null>(null);
   let moveOpen = $state(false);
   let folders = $state<{ id: string; name: string }[]>([]);
+  let query = $state("");
+  let searchHits = $state<InboxItem[] | null>(null);
+  let inboxToken = $state<string | null>(null);
+  let searchToken = $state<string | null>(null);
+  let loadingMore = $state(false);
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
+  const listing = $derived(searchHits ?? messages);
   const visible = $derived(
     categoryFilter === "all"
-      ? messages
-      : messages.filter((message) => message.category === categoryFilter),
+      ? listing
+      : listing.filter((message) => message.category === categoryFilter),
   );
   const current = $derived(visible[selected] ?? null);
 
@@ -82,6 +89,7 @@
     error = status.error;
     if (status.signed_in) {
       messages = await api.inbox();
+      inboxToken = await api.inboxToken();
       if (selected >= visible.length) selected = 0;
       if (current) await openCurrent();
       else open = null;
@@ -335,6 +343,73 @@
     categoryDraft = categoryDraft.filter((_, i) => i !== index);
   }
 
+  function onQuery() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void runSearch(), 250);
+  }
+
+  async function runSearch() {
+    const q = query.trim();
+    searchHits = null;
+    searchToken = null;
+    selected = 0;
+    if (!q) return;
+    loadingMore = true;
+    error = null;
+    try {
+      const page = await api.loadMore(q, null);
+      searchHits = page.messages;
+      searchToken = page.next_page_token;
+      open = null;
+    } catch (err) {
+      error = String(err);
+    } finally {
+      loadingMore = false;
+    }
+  }
+
+  async function fetchOlder() {
+    if (loadingMore) return;
+    const q = query.trim();
+    const searching = q.length > 0;
+    const token = searching ? searchToken : inboxToken;
+    if (searching && !token) return;
+    if (!searching && inboxToken === "") return;
+    loadingMore = true;
+    error = null;
+    try {
+      let pageToken = token;
+      if (!searching && !pageToken) {
+        const first = await api.loadMore(null, null);
+        inboxToken = first.next_page_token;
+        pageToken = inboxToken;
+        if (!pageToken) return;
+      }
+      const page = await api.loadMore(searching ? q : null, pageToken);
+      if (searching) {
+        const seen = new Set((searchHits ?? []).map((message) => message.id));
+        searchHits = [
+          ...(searchHits ?? []),
+          ...page.messages.filter((message) => !seen.has(message.id)),
+        ];
+        searchToken = page.next_page_token;
+      } else {
+        inboxToken = page.next_page_token;
+        messages = await api.inbox();
+      }
+    } catch (err) {
+      error = String(err);
+    } finally {
+      loadingMore = false;
+    }
+  }
+
+  function onListScroll(event: Event) {
+    const el = event.currentTarget as HTMLElement;
+    if (el.scrollTop + el.clientHeight < el.scrollHeight - 140) return;
+    void fetchOlder();
+  }
+
   function when(ms: number | null): string {
     if (ms == null) return "";
     const date = new Date(ms);
@@ -350,8 +425,17 @@
 
 <main class="app">
   <section class="list">
+    <div class="search">
+      <input
+        type="search"
+        placeholder="Search mail"
+        bind:value={query}
+        oninput={onQuery}
+        aria-label="Search mail"
+      />
+    </div>
     <header class="list-head">
-      <h1>Inbox</h1>
+      <h1>{query.trim() ? "Search" : "Inbox"}</h1>
       <span class="count">{visible.length ? `${visible.length}` : ""}</span>
     </header>
     {#if mailSettings && (jevEnabled || messages.some((message) => message.category))}
@@ -368,7 +452,10 @@
         {/each}
       </div>
     {/if}
-    {#if messages.length === 0}
+    <div class="list-scroll" onscroll={onListScroll}>
+    {#if query.trim() && searchHits && searchHits.length === 0}
+      <p class="empty">No messages match.</p>
+    {:else if messages.length === 0 && !query.trim()}
       <p class="empty">
         {#if !desktop}
           This window is the shell. Run <code>npm run dev</code> from the repo to open it in OmaMail.
@@ -407,6 +494,8 @@
         {/each}
       </div>
     {/if}
+    {#if loadingMore}<p class="more">Loading older mail…</p>{/if}
+    </div>
     <div class="account">
       <span class="seal" aria-hidden="true"></span>
       <div class="account-copy">
