@@ -414,40 +414,36 @@
     const q = query.trim();
     const searching = q.length > 0;
     const token = searching ? searchToken : inboxToken;
-    if (searching && !token) return;
-    if (!searching && inboxToken === "") return;
+    if (!token) return;
+    const before = new Set((searching ? searchHits ?? [] : messages).map((message) => message.id));
     loadingMore = true;
     error = null;
     try {
-      let pageToken = token;
-      if (!searching && !pageToken) {
-        const first = await api.loadMore(null, null);
-        inboxToken = first.next_page_token;
-        pageToken = inboxToken;
-        if (!pageToken) return;
-      }
-      const page = await api.loadMore(searching ? q : null, pageToken);
+      const page = await api.loadMore(searching ? q : null, token);
+      const fresh = page.messages.filter((message) => !before.has(message.id));
       if (searching) {
-        const seen = new Set((searchHits ?? []).map((message) => message.id));
-        searchHits = [
-          ...(searchHits ?? []),
-          ...page.messages.filter((message) => !seen.has(message.id)),
-        ];
-        searchToken = page.next_page_token;
-      } else {
+        searchHits = [...(searchHits ?? []), ...fresh];
+        searchToken = fresh.length ? page.next_page_token : null;
+      } else if (fresh.length) {
         inboxToken = page.next_page_token;
         messages = await api.inbox();
+      } else {
+        inboxToken = null;
       }
     } catch (err) {
       error = String(err);
+      if (searching) searchToken = null;
+      else inboxToken = null;
     } finally {
       loadingMore = false;
     }
   }
 
   function onListScroll(event: Event) {
+    if (loadingMore) return;
     const el = event.currentTarget as HTMLElement;
-    if (el.scrollTop + el.clientHeight < el.scrollHeight - 140) return;
+    if (el.scrollHeight <= el.clientHeight + 8) return;
+    if (el.scrollTop + el.clientHeight < el.scrollHeight - 160) return;
     void fetchOlder();
   }
 

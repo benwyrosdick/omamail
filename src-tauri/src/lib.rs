@@ -219,8 +219,30 @@ pub fn run() {
 
 fn watch_theme(app: tauri::AppHandle) -> Option<notify::RecommendedWatcher> {
     use notify::{RecursiveMode, Watcher};
-    let mut watcher = notify::recommended_watcher(move |_| {
-        let _ = app.emit("theme-changed", current_palette());
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+    let last: &'static Mutex<Option<(String, Instant)>> = {
+        static LAST: OnceLock<Mutex<Option<(String, Instant)>>> = OnceLock::new();
+        LAST.get_or_init(|| Mutex::new(None))
+    };
+    let mut watcher = notify::recommended_watcher(move |event: Result<notify::Event, notify::Error>| {
+        if let Ok(event) = event {
+            if !event.kind.is_modify() && !event.kind.is_create() {
+                return;
+            }
+        }
+        let palette = current_palette();
+        let key = format!("{}:{}:{}", palette.bg, palette.text, palette.accent);
+        let now = Instant::now();
+        if let Ok(mut last) = last.lock() {
+            if let Some((prev, at)) = last.as_ref() {
+                if prev == &key || now.duration_since(*at) < Duration::from_millis(400) {
+                    return;
+                }
+            }
+            *last = Some((key, now));
+        }
+        let _ = app.emit("theme-changed", palette);
     })
     .ok()?;
     if let Some(parent) = colors_path().and_then(|path| path.parent().map(PathBuf::from)) {
