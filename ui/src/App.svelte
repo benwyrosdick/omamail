@@ -18,19 +18,24 @@
   let status = $state<Status>({
     signed_in: false,
     email: null,
+    accounts: [],
     client_configured: false,
     error: null,
   });
+  let accountMenu = $state(false);
   let messages = $state<InboxItem[]>([]);
   let selected = $state(0);
   let open = $state<MessageView | null>(null);
   let error = $state<string | null>(null);
   let busy = $state<string | null>(null);
+  let syncing = false;
+  let signingIn = $state(false);
   let desktop = $state(true);
   let settingsOpen = $state(false);
   let mailSettings = $state<MailSettings | null>(null);
   let apiKeyDraft = $state("");
   let jevEnabled = $state(false);
+  let refreshMinutes = $state(10);
   let categoryDraft = $state<Category[]>([]);
   let categoryFilter = $state("all");
   let dragIndex = $state<number | null>(null);
@@ -51,6 +56,15 @@
       : listing.filter((message) => message.category === categoryFilter),
   );
   const current = $derived(visible[selected] ?? null);
+  const REFRESH_CHOICES = [0, 1, 5, 10, 15, 30, 60];
+
+  // Poll Gmail on the saved cadence while signed in; 0 means manual only.
+  $effect(() => {
+    const minutes = mailSettings?.refresh_minutes ?? 0;
+    if (!desktop || !status.signed_in || minutes <= 0) return;
+    const timer = setInterval(() => void sync(true), minutes * 60_000);
+    return () => clearInterval(timer);
+  });
 
   onMount(() => {
     desktop = inTauri();
@@ -66,11 +80,7 @@
           };
           await loadSettings();
           await refresh();
-          if (status.signed_in && messages.length === 0) {
-            await sync();
-          } else if (jevEnabled && mailSettings?.key_configured && messages.some((message) => !message.category)) {
-            await sortMail();
-          }
+          if (status.signed_in) await sync();
         }
       } catch (err) {
         error = String(err);
@@ -82,6 +92,7 @@
   async function loadSettings() {
     mailSettings = await api.settings();
     jevEnabled = mailSettings.jev_enabled;
+    refreshMinutes = mailSettings.refresh_minutes;
     categoryDraft = mailSettings.categories.map((category) => ({ ...category }));
   }
 
@@ -144,24 +155,42 @@
   }
 
   async function connect() {
-    busy = "Signing in and fetching mail…";
+    if (signingIn) return;
+    signingIn = true;
     error = null;
     try {
       await api.login();
+      searchHits = null;
+      query = "";
+      open = null;
       await refresh();
+      await loadSettings();
     } catch (err) {
-      error = String(err);
+      const message = String(err);
+      if (!/cancelled/i.test(message)) error = message;
     } finally {
-      busy = null;
+      signingIn = false;
     }
   }
 
-  async function disconnect() {
+  async function cancelSignIn() {
+    try {
+      await api.cancelLogin();
+    } catch (err) {
+      error = String(err);
+    }
+  }
+
+  async function disconnect(email?: string) {
     busy = "Signing out…";
     error = null;
     try {
-      await api.logout();
+      await api.logout(email ?? status.email ?? undefined);
+      searchHits = null;
+      query = "";
+      open = null;
       await refresh();
+      await loadSettings();
     } catch (err) {
       error = String(err);
     } finally {
@@ -169,25 +198,65 @@
     }
   }
 
-  async function sync() {
-    if (!status.signed_in || busy) return;
-    busy = "Syncing inbox…";
+  async function chooseAccount(email: string) {
+    accountMenu = false;
+    if (email === status.email) return;
+    busy = "Switching account…";
     error = null;
     try {
-      await api.sync();
-      messages = await api.inbox();
-      if (jevEnabled && mailSettings?.key_configured) {
-        busy = "Sorting with Jev…";
-        await api.classify();
-        messages = await api.inbox();
-      }
-      if (selected >= visible.length) selected = 0;
-      if (current) await openCurrent();
+      await api.setActiveAccount(email);
+      searchHits = null;
+      query = "";
+      open = null;
+      selected = 0;
+      await refresh();
+      await loadSettings();
     } catch (err) {
       error = String(err);
     } finally {
       busy = null;
     }
+  }
+
+  // Background polls stay quiet: no status text, no locked buttons.
+  async function sync(background = false) {
+    if (!status.signed_in || busy || syncing) return;
+    syncing = true;
+    if (!background) {
+      busy = "Syncing inbox…";
+      error = null;
+    }
+    try {
+      await api.sync();
+      await reloadInbox(background);
+      if (jevEnabled && mailSettings?.key_configured && messages.some((message) => !message.category)) {
+        if (!background) busy = "Sorting with Jev…";
+        await api.classify();
+        await reloadInbox(background);
+      }
+    } catch (err) {
+      error = String(err);
+    } finally {
+      syncing = false;
+      if (!background) busy = null;
+    }
+  }
+
+  // New mail lands above the selection; keep following the message being read.
+  async function reloadInbox(background: boolean) {
+    const fresh = await api.inbox();
+    const keep = current?.id ?? null;
+    messages = fresh;
+    const kept = keep ? visible.findIndex((message) => message.id === keep) : -1;
+    if (kept >= 0) {
+      selected = kept;
+      if (!background && open?.id !== keep) await openCurrent();
+      return;
+    }
+    if (selected >= visible.length) selected = 0;
+    // Opening marks mail read, so a background poll never opens on its own.
+    if (!background && current) await openCurrent();
+    else if (open && !visible.some((message) => message.id === open?.id)) open = null;
   }
 
   async function openCurrent() {
@@ -362,8 +431,10 @@
         api_key: apiKeyDraft.trim() ? apiKeyDraft.trim() : null,
         jev_enabled: jevEnabled,
         categories: categoryDraft,
+        refresh_minutes: refreshMinutes,
       });
       jevEnabled = mailSettings.jev_enabled;
+      refreshMinutes = mailSettings.refresh_minutes;
       categoryDraft = mailSettings.categories.map((category) => ({ ...category }));
       apiKeyDraft = "";
       if (jevEnabled && mailSettings.key_configured && status.signed_in) {
@@ -536,16 +607,32 @@
     <div class="account">
       <span class="seal" aria-hidden="true"></span>
       <div class="account-copy">
-        <div class="email">{status.email ?? "Not signed in"}</div>
-        {#if busy}<div class="busy">{busy}</div>{:else if error}<div class="error">{error}</div>{/if}
+        {#if (status.accounts?.length ?? 0) > 1}
+          <button class="email-select" type="button" onclick={() => (accountMenu = !accountMenu)}>
+            {status.email}
+          </button>
+          {#if accountMenu}
+            <div class="account-menu">
+              {#each status.accounts as email (email)}
+                <button type="button" class:on={email === status.email} onclick={() => chooseAccount(email)}>{email}</button>
+              {/each}
+            </div>
+          {/if}
+        {:else}
+          <div class="email">{status.email ?? "Not signed in"}</div>
+        {/if}
+        {#if signingIn}<div class="busy">Waiting for the browser…</div>{:else if busy}<div class="busy">{busy}</div>{:else if error}<div class="error">{error}</div>{/if}
       </div>
       {#if status.signed_in}
-        <button class="primary" disabled={!!busy} onclick={sync}>Refresh</button>
-        <button disabled={!!busy} onclick={disconnect}>Sign out</button>
+        <button class="primary" disabled={!!busy} onclick={() => sync()}>Refresh</button>
+        <button disabled={!!busy} onclick={() => disconnect()}>Sign out</button>
       {:else}
-        <button class="primary" disabled={!!busy || !desktop} onclick={connect}>Connect</button>
+        <button class="primary" disabled={signingIn || !desktop} onclick={connect}>Connect</button>
       {/if}
-      <button disabled={!!busy} onclick={openSettings}>Settings</button>
+      {#if signingIn}
+        <button type="button" onclick={cancelSignIn}>Cancel</button>
+      {/if}
+      <button type="button" onclick={openSettings}>Settings</button>
     </div>
   </section>
 
@@ -556,6 +643,39 @@
         <button onclick={() => (settingsOpen = false)}>Close</button>
       </header>
       <form class="settings" onsubmit={(event) => { event.preventDefault(); void saveSettings(); }}>
+        <section class="accounts">
+          <div class="categories-head">
+            <h2>Accounts</h2>
+            {#if signingIn}
+              <button type="button" onclick={cancelSignIn}>Cancel</button>
+            {:else}
+              <button type="button" disabled={!!busy} onclick={connect}>Add Google account</button>
+            {/if}
+          </div>
+          {#if status.accounts.length === 0}
+            <p class="hint-line">No Google account signed in.</p>
+          {:else}
+            {#each status.accounts as email (email)}
+              <div class="account-row">
+                <span>{email}{email === status.email ? " · viewing" : ""}</span>
+                <button type="button" disabled={!!busy} onclick={() => disconnect(email)}>Sign out</button>
+              </div>
+            {/each}
+          {/if}
+        </section>
+        <label>
+          Check for new mail
+          <select bind:value={refreshMinutes}>
+            {#each REFRESH_CHOICES as minutes (minutes)}
+              <option value={minutes}>
+                {minutes === 0 ? "Only when I press Refresh" : minutes === 1 ? "Every minute" : `Every ${minutes} minutes`}
+              </option>
+            {/each}
+            {#if !REFRESH_CHOICES.includes(refreshMinutes)}
+              <option value={refreshMinutes}>Every {refreshMinutes} minutes</option>
+            {/if}
+          </select>
+        </label>
         <label>
           TypeSafe API key
           <input
@@ -571,7 +691,7 @@
         </label>
         <div class="categories">
           <div class="categories-head">
-            <h2>Categories</h2>
+            <h2>Categories{mailSettings?.account ? ` · ${mailSettings.account}` : ""}</h2>
             <button type="button" onclick={addCategory}>Add</button>
           </div>
           {#each categoryDraft as category, index (index)}

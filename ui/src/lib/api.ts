@@ -16,6 +16,7 @@ export type Palette = {
 export type Status = {
   signed_in: boolean;
   email: string | null;
+  accounts: string[];
   client_configured: boolean;
   error: string | null;
 };
@@ -55,6 +56,8 @@ export type MailSettings = {
   key_configured: boolean;
   jev_enabled: boolean;
   categories: Category[];
+  account: string | null;
+  refresh_minutes: number;
 };
 
 export const FALLBACK: Palette = {
@@ -98,7 +101,9 @@ export function onTheme(handler: (palette: Palette) => void): Promise<UnlistenFn
 export const api = {
   status: () => invoke<Status>("status"),
   login: () => invoke<{ email: string }>("login"),
-  logout: () => invoke<void>("logout"),
+  cancelLogin: () => invoke<void>("cancel_login"),
+  logout: (email?: string) => invoke<void>("logout", { email: email ?? null }),
+  setActiveAccount: (email: string) => invoke<void>("set_active_account", { email }),
   sync: () => invoke<number>("sync"),
   inbox: () => invoke<InboxItem[]>("inbox"),
   inboxToken: () => invoke<string | null>("inbox_token"),
@@ -114,6 +119,7 @@ export const api = {
     api_key?: string | null;
     jev_enabled: boolean;
     categories: Category[];
+    refresh_minutes: number;
   }) => invoke<MailSettings>("save_settings", { update }),
   classify: (all = false) => invoke<number>("classify", { all }),
   folders: () => invoke<{ id: string; name: string }[]>("folders"),

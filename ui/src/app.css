@@ -133,6 +133,7 @@ button.primary {
 }
 
 .account-copy {
+  position: relative;
   min-width: 0;
   flex: 1;
 }
@@ -141,6 +142,58 @@ button.primary {
   padding: 4px 8px;
   font-size: 12px;
   flex: none;
+}
+
+.email-select {
+  width: 100%;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 4;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, black 35%, transparent);
+}
+
+.account-menu button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+}
+
+.account-menu button.on {
+  color: var(--accent);
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hint-line {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .filters {
@@ -178,6 +231,7 @@ button.primary {
 
 .settings input[type="password"],
 .settings input[type="text"],
+.settings select,
 .category-edit input {
   font: inherit;
   color: var(--text);

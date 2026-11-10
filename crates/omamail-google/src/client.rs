@@ -100,6 +100,138 @@ impl GoogleClient {
     }
 }
 
+/// Mailbox changes since a history id, folded to the latest state per message.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HistoryDelta {
+    /// Message id → the label set Gmail last reported for it. `None` means
+    /// the message was deleted; an empty set means labels are unknown.
+    pub changes: std::collections::BTreeMap<String, Option<Vec<String>>>,
+    /// Where the next incremental sync should start.
+    pub history_id: String,
+}
+
+impl GoogleClient {
+    /// The mailbox's current history id, used as the starting point for
+    /// incremental syncs after a full inbox load.
+    pub async fn history_id(&self) -> Result<String, MailError> {
+        let profile: serde_json::Value = self
+            .get_json(&format!("{GMAIL_API}/users/me/profile"))
+            .await?;
+        profile
+            .get("historyId")
+            .and_then(json_id)
+            .ok_or_else(|| MailError::msg("gmail profile had no historyId"))
+    }
+
+    /// Everything that changed since `start`. `Ok(None)` means Gmail no longer
+    /// keeps history that far back and the caller must do a full sync.
+    pub async fn history_since(&self, start: &str) -> Result<Option<HistoryDelta>, MailError> {
+        let mut delta = HistoryDelta {
+            history_id: start.to_string(),
+            ..HistoryDelta::default()
+        };
+        let mut page_token: Option<String> = None;
+        loop {
+            let mut url = format!(
+                "{GMAIL_API}/users/me/history?maxResults=500&startHistoryId={}",
+                urlencoding_path(start)
+            );
+            if let Some(token) = &page_token {
+                url.push_str("&pageToken=");
+                url.push_str(&urlencoding_path(token));
+            }
+            let page: serde_json::Value = match self.get_json(&url).await {
+                Ok(page) => page,
+                Err(MailError::Remote { status: 404, .. }) => return Ok(None),
+                Err(err) => return Err(err),
+            };
+            page_token = fold_history(&mut delta, &page);
+            if page_token.is_none() {
+                return Ok(Some(delta));
+            }
+        }
+    }
+
+    /// Current metadata for one message, or `None` if Gmail no longer has it.
+    pub async fn message_summary(&self, id: &str) -> Result<Option<MessageSummary>, MailError> {
+        match self.fetch_metadata(id).await {
+            Ok(summary) => Ok(Some(summary)),
+            Err(MailError::Remote { status: 404, .. }) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// [`Self::message_summary`] for many ids at once, in the same order.
+    pub async fn message_summaries(
+        &self,
+        ids: &[&str],
+    ) -> Result<Vec<Option<MessageSummary>>, MailError> {
+        futures_util::future::join_all(ids.iter().map(|id| self.message_summary(id)))
+            .await
+            .into_iter()
+            .collect()
+    }
+}
+
+/// Fold one `users.history.list` page into `delta`, returning the next page token.
+pub fn fold_history(delta: &mut HistoryDelta, page: &serde_json::Value) -> Option<String> {
+    if let Some(id) = page.get("historyId").and_then(json_id) {
+        delta.history_id = id;
+    }
+    let records = page
+        .get("history")
+        .and_then(|value| value.as_array())
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    for record in records {
+        for (kind, deleted) in [
+            ("messagesAdded", false),
+            ("labelsAdded", false),
+            ("labelsRemoved", false),
+            ("messagesDeleted", true),
+        ] {
+            let entries = record
+                .get(kind)
+                .and_then(|value| value.as_array())
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            for entry in entries {
+                let Some(message) = entry.get("message") else {
+                    continue;
+                };
+                let Some(id) = message.get("id").and_then(|id| id.as_str()) else {
+                    continue;
+                };
+                let labels = message
+                    .get("labelIds")
+                    .and_then(|value| value.as_array())
+                    .map(|labels| {
+                        labels
+                            .iter()
+                            .filter_map(|label| label.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                delta
+                    .changes
+                    .insert(id.to_string(), (!deleted).then_some(labels));
+            }
+        }
+    }
+    page.get("nextPageToken")
+        .and_then(|token| token.as_str())
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
+}
+
+/// Gmail sends history ids as strings, but accept numbers too.
+fn json_id(value: &serde_json::Value) -> Option<String> {
+    value
+        .as_str()
+        .map(str::to_string)
+        .or_else(|| value.as_u64().map(|id| id.to_string()))
+}
+
 pub struct GmailLabel {
     pub id: String,
     pub name: String,
@@ -676,6 +808,39 @@ mod tests {
         let text = body_from_message(&raw).plain_text;
         assert!(text.contains("Hello & welcome"));
         assert!(!text.contains("<p>"));
+    }
+
+    #[test]
+    fn history_folds_to_the_latest_state_per_message() {
+        let mut delta = HistoryDelta::default();
+        let first = serde_json::json!({
+            "historyId": "120",
+            "nextPageToken": "p2",
+            "history": [
+                {"id": "101", "messagesAdded": [{"message": {"id": "a", "labelIds": ["INBOX", "UNREAD"]}}]},
+                {"id": "102", "labelsRemoved": [{"message": {"id": "a", "labelIds": ["INBOX"]}, "labelIds": ["UNREAD"]}]},
+                {"id": "103", "messagesAdded": [{"message": {"id": "b", "labelIds": ["SENT"]}}]}
+            ]
+        });
+        assert_eq!(fold_history(&mut delta, &first).as_deref(), Some("p2"));
+        let second = serde_json::json!({
+            "historyId": "130",
+            "history": [
+                {"id": "121", "messagesDeleted": [{"message": {"id": "b"}}]}
+            ]
+        });
+        assert_eq!(fold_history(&mut delta, &second), None);
+        assert_eq!(delta.history_id, "130");
+        assert_eq!(delta.changes.get("a"), Some(&Some(vec!["INBOX".to_string()])));
+        assert_eq!(delta.changes.get("b"), Some(&None));
+    }
+
+    #[test]
+    fn empty_history_keeps_the_new_id() {
+        let mut delta = HistoryDelta::default();
+        assert_eq!(fold_history(&mut delta, &serde_json::json!({"historyId": "55"})), None);
+        assert!(delta.changes.is_empty());
+        assert_eq!(delta.history_id, "55");
     }
 
     #[test]

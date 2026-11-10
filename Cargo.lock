@@ -2912,6 +2912,7 @@ version = "0.1.0"
 dependencies = [
  "notify",
  "omamail-app",
+ "omamail-google",
  "serde",
  "serde_json",
  "tauri",

@@ -21,8 +21,26 @@ async fn login(state: tauri::State<'_, Services>) -> Result<omamail_app::Session
 }
 
 #[tauri::command]
-async fn logout(state: tauri::State<'_, Services>) -> Result<(), String> {
-    commands::logout(&state)
+fn cancel_login() {
+    omamail_google::cancel_sign_in();
+}
+
+#[tauri::command]
+async fn logout(
+    state: tauri::State<'_, Services>,
+    email: Option<String>,
+) -> Result<(), String> {
+    commands::logout(&state, email.as_deref())
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn set_active_account(
+    state: tauri::State<'_, Services>,
+    email: String,
+) -> Result<(), String> {
+    commands::set_active_account(&state, &email)
         .await
         .map_err(|err| err.to_string())
 }
@@ -181,7 +199,9 @@ pub fn run() {
             theme,
             status,
             login,
+            cancel_login,
             logout,
+            set_active_account,
             sync,
             inbox,
             inbox_token,

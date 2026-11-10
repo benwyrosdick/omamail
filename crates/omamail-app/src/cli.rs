@@ -119,7 +119,7 @@ async fn run_command(command: Command) -> anyhow::Result<String> {
         Command::Auth {
             action: AuthAction::Logout,
         } => {
-            commands::logout(&services).await?;
+            commands::logout(&services, None).await?;
             Ok(envelope(&json!({ "signed_out": true })))
         }
         Command::Sync => {

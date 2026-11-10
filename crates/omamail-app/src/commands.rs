@@ -12,6 +12,7 @@ use std::sync::Mutex;
 pub struct Status {
     pub signed_in: bool,
     pub email: Option<String>,
+    pub accounts: Vec<String>,
     pub client_configured: bool,
     pub error: Option<String>,
 }
@@ -70,22 +71,21 @@ pub async fn theme() -> Palette {
 
 pub async fn status(services: &Services) -> Status {
     let client_configured = OauthConfig::is_configured(&services.paths);
-    match signed_in_account(services).await {
-        Ok(Some(account)) => Status {
-            signed_in: true,
-            email: Some(account.email),
-            client_configured,
-            error: None,
-        },
-        Ok(None) => Status {
-            signed_in: false,
-            email: None,
-            client_configured,
-            error: None,
-        },
+    match signed_in_accounts(services).await {
+        Ok(accounts) => {
+            let active = signed_in_account(services).await.ok().flatten();
+            Status {
+                signed_in: active.is_some(),
+                email: active.map(|account| account.email),
+                accounts: accounts.into_iter().map(|account| account.email).collect(),
+                client_configured,
+                error: None,
+            }
+        }
         Err(err) => Status {
             signed_in: false,
             email: None,
+            accounts: Vec::new(),
             client_configured,
             error: Some(err.to_string()),
         },
@@ -120,6 +120,7 @@ pub async fn login(services: &Services) -> anyhow::Result<Session> {
         "google",
     )
     .await?;
+    omamail_store::set_setting(&services.db, "active_account", &signed_in.email).await?;
     cache_access(
         services,
         &signed_in.email,
@@ -133,15 +134,34 @@ pub async fn login(services: &Services) -> anyhow::Result<Session> {
     })
 }
 
-pub async fn logout(services: &Services) -> anyhow::Result<()> {
-    let accounts = omamail_store::accounts(&services.db).await?;
-    for account in accounts {
-        services
-            .tokens
-            .delete(&account.email)
-            .await
-            .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+pub async fn logout(services: &Services, email: Option<&str>) -> anyhow::Result<()> {
+    let email = match email {
+        Some(email) => email.to_string(),
+        None => {
+            require_account(services).await?.email
+        }
+    };
+    services
+        .tokens
+        .delete(&email)
+        .await
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    clear_cache(services);
+    let remaining = signed_in_accounts(services).await?;
+    if let Some(next) = remaining.first() {
+        omamail_store::set_setting(&services.db, "active_account", &next.email).await?;
+    } else {
+        omamail_store::set_setting(&services.db, "active_account", "").await?;
     }
+    Ok(())
+}
+
+pub async fn set_active_account(services: &Services, email: &str) -> anyhow::Result<()> {
+    let accounts = signed_in_accounts(services).await?;
+    if !accounts.iter().any(|account| account.email == email) {
+        anyhow::bail!("that account is not signed in");
+    }
+    omamail_store::set_setting(&services.db, "active_account", email).await?;
     clear_cache(services);
     Ok(())
 }
@@ -150,11 +170,97 @@ pub async fn sync(services: &Services) -> anyhow::Result<usize> {
     let account = require_account(services).await?;
     let access = access_token(services, &account.email).await?;
     let client = GoogleClient::new(access)?;
-    let page = load_gmail_page(services, &client, account.id, None, None).await?;
+    let key = history_key(account.id);
+    let start = omamail_store::get_setting(&services.db, &key)
+        .await?
+        .filter(|start| !start.is_empty());
+    let delta = match start {
+        Some(start) => client
+            .history_since(&start)
+            .await
+            .map_err(|err| anyhow::anyhow!(err.to_string()))?,
+        None => None,
+    };
+    let changed = match delta {
+        Some(delta) if delta.changes.len() <= HISTORY_REFETCH_LIMIT => {
+            apply_history(services, &client, account.id, delta).await?
+        }
+        // No history yet, history expired, or so much changed that a fresh
+        // first page is cheaper than refetching every message.
+        _ => {
+            let history_id = client
+                .history_id()
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+            let page = load_gmail_page(services, &client, account.id, None, None).await?;
+            omamail_store::set_setting(&services.db, &key, &history_id).await?;
+            page.added
+        }
+    };
     if let Err(err) = refresh_labels(services, &client, account.id).await {
         eprintln!("omamail: could not refresh Gmail labels: {err}");
     }
-    Ok(page.added)
+    Ok(changed)
+}
+
+/// Past this many changed messages, a full first-page reload beats refetching each one.
+const HISTORY_REFETCH_LIMIT: usize = 200;
+
+fn history_key(account_id: i64) -> String {
+    format!("history_id:{account_id}")
+}
+
+/// Bring the cache up to date from a history delta, then advance the history id.
+/// Only inbox mail and messages already cached are stored; the rest is skipped.
+async fn apply_history(
+    services: &Services,
+    client: &GoogleClient,
+    account_id: i64,
+    delta: omamail_google::HistoryDelta,
+) -> anyhow::Result<usize> {
+    let mut refetch = Vec::new();
+    let mut changed = 0;
+    for (id, labels) in delta.changes {
+        let cached = omamail_store::get_message(&services.db, account_id, &id)
+            .await?
+            .is_some();
+        match labels {
+            None => {
+                if cached {
+                    omamail_store::remove_message(&services.db, account_id, &id).await?;
+                    changed += 1;
+                }
+            }
+            Some(labels) => {
+                let inbox = labels.is_empty() || labels.iter().any(|label| label == "INBOX");
+                if cached || inbox {
+                    refetch.push((id, cached));
+                }
+            }
+        }
+    }
+    let ids: Vec<&str> = refetch.iter().map(|(id, _)| id.as_str()).collect();
+    let fetched = client
+        .message_summaries(&ids)
+        .await
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    let mut fresh = Vec::new();
+    for ((id, cached), summary) in refetch.into_iter().zip(fetched) {
+        match summary {
+            Some(summary) if cached || summary.label_ids.iter().any(|label| label == "INBOX") => {
+                fresh.push(summary);
+            }
+            Some(_) => {}
+            None if cached => {
+                omamail_store::remove_message(&services.db, account_id, &id).await?;
+                changed += 1;
+            }
+            None => {}
+        }
+    }
+    changed += omamail_store::upsert_messages(&services.db, account_id, &fresh).await?;
+    omamail_store::set_setting(&services.db, &history_key(account_id), &delta.history_id).await?;
+    Ok(changed)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -252,7 +358,7 @@ pub async fn load_more(
     let token = page_token.as_deref().filter(|token| !token.is_empty());
     let page = load_gmail_page(services, &client, account.id, query, token).await?;
     let labels = omamail_store::gmail_labels(&services.db, account.id).await?;
-    let categories = load_categories(services).await?;
+    let categories = load_categories(services, account.id).await?;
     let messages = page
         .messages
         .into_iter()
@@ -290,7 +396,7 @@ async fn load_gmail_page(
     if query.is_none() {
         omamail_store::set_setting(
             &services.db,
-            "inbox_page_token",
+            &format!("inbox_page_token:{account_id}"),
             page.next_page_token.as_deref().unwrap_or(""),
         )
         .await?;
@@ -303,7 +409,14 @@ async fn load_gmail_page(
 }
 
 pub async fn inbox_page_token(services: &Services) -> anyhow::Result<Option<String>> {
-    let token = omamail_store::get_setting(&services.db, "inbox_page_token").await?;
+    let Some(account) = signed_in_account(services).await? else {
+        return Ok(None);
+    };
+    let token = omamail_store::get_setting(
+        &services.db,
+        &format!("inbox_page_token:{}", account.id),
+    )
+    .await?;
     Ok(token.filter(|token| !token.is_empty()))
 }
 
@@ -312,7 +425,7 @@ pub async fn inbox(services: &Services) -> anyhow::Result<Vec<InboxItem>> {
         return Ok(Vec::new());
     };
     let labels = labels_for(services, account.id).await;
-    let categories = load_categories(services).await?;
+    let categories = load_categories(services, account.id).await?;
     let messages = omamail_store::list_inbox(&services.db, account.id).await?;
     Ok(messages
         .into_iter()
@@ -328,7 +441,7 @@ pub async fn message(services: &Services, id: &str) -> anyhow::Result<MessageVie
     let tags = tags_for(
         &summary,
         &labels_for(services, account.id).await,
-        &load_categories(services).await?,
+        &load_categories(services, account.id).await?,
     );
     let cached = omamail_store::get_body(&services.db, account.id, id).await?;
     let body = if let Some(cached) = cached.filter(|body| body.html.is_some()) {
@@ -417,6 +530,7 @@ pub async fn unsubscribe(services: &Services, id: &str) -> anyhow::Result<Unsubs
     })
 }
 
+#[derive(Clone)]
 struct SignedAccount {
     id: i64,
     email: String,
@@ -428,19 +542,32 @@ async fn require_account(services: &Services) -> anyhow::Result<SignedAccount> {
         .ok_or_else(|| anyhow::anyhow!("not signed in"))
 }
 
-async fn signed_in_account(services: &Services) -> anyhow::Result<Option<SignedAccount>> {
-    let accounts = omamail_store::accounts(&services.db).await?;
-    for account in accounts {
+async fn signed_in_accounts(services: &Services) -> anyhow::Result<Vec<SignedAccount>> {
+    let mut signed_in = Vec::new();
+    for account in omamail_store::accounts(&services.db).await? {
         match services.tokens.get(&account.email).await {
-            Ok(Some(_)) => {
-                return Ok(Some(SignedAccount {
-                    id: account.id,
-                    email: account.email,
-                }));
-            }
+            Ok(Some(_)) => signed_in.push(SignedAccount {
+                id: account.id,
+                email: account.email,
+            }),
             Ok(None) => continue,
             Err(err) => return Err(anyhow::anyhow!(err.to_string())),
         }
+    }
+    Ok(signed_in)
+}
+
+async fn signed_in_account(services: &Services) -> anyhow::Result<Option<SignedAccount>> {
+    let accounts = signed_in_accounts(services).await?;
+    let active = omamail_store::get_setting(&services.db, "active_account").await?;
+    if let Some(email) = active.filter(|email| !email.is_empty()) {
+        if let Some(account) = accounts.iter().find(|account| account.email == email) {
+            return Ok(Some(account.clone()));
+        }
+    }
+    if let Some(account) = accounts.first() {
+        omamail_store::set_setting(&services.db, "active_account", &account.email).await?;
+        return Ok(Some(account.clone()));
     }
     Ok(None)
 }
@@ -531,14 +658,25 @@ fn clear_cache(services: &Services) {
 }
 
 const TYPESAFE_ACCOUNT: &str = "typesafe";
-const SETTING_JEV: &str = "jev_enabled";
-const SETTING_CATEGORIES: &str = "categories";
+const SETTING_REFRESH: &str = "refresh_minutes";
+const DEFAULT_REFRESH_MINUTES: u32 = 10;
+const MAX_REFRESH_MINUTES: u32 = 24 * 60;
+fn jev_key(account_id: i64) -> String {
+    format!("jev_enabled:{account_id}")
+}
+
+fn categories_key(account_id: i64) -> String {
+    format!("categories:{account_id}")
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MailSettings {
     pub key_configured: bool,
     pub jev_enabled: bool,
     pub categories: Vec<Category>,
+    pub account: Option<String>,
+    /// Minutes between background inbox refreshes; 0 turns polling off.
+    pub refresh_minutes: u32,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -546,6 +684,8 @@ pub struct SettingsUpdate {
     pub api_key: Option<String>,
     pub jev_enabled: bool,
     pub categories: Vec<Category>,
+    #[serde(default)]
+    pub refresh_minutes: Option<u32>,
 }
 
 pub async fn mail_settings(services: &Services) -> anyhow::Result<MailSettings> {
@@ -555,15 +695,26 @@ pub async fn mail_settings(services: &Services) -> anyhow::Result<MailSettings> 
         .await
         .map_err(|err| anyhow::anyhow!(err.to_string()))?
         .is_some();
-    let jev_enabled = omamail_store::get_setting(&services.db, SETTING_JEV)
+    let account = signed_in_account(services).await?;
+    let (jev_enabled, categories) = if let Some(account) = &account {
+        (
+            account_jev_enabled(services, account.id).await?,
+            load_categories(services, account.id).await?,
+        )
+    } else {
+        (false, jev::default_categories())
+    };
+    let refresh_minutes = omamail_store::get_setting(&services.db, SETTING_REFRESH)
         .await?
-        .as_deref()
-        == Some("1");
-    let categories = load_categories(services).await?;
+        .and_then(|raw| raw.parse::<u32>().ok())
+        .unwrap_or(DEFAULT_REFRESH_MINUTES)
+        .min(MAX_REFRESH_MINUTES);
     Ok(MailSettings {
         key_configured,
         jev_enabled,
         categories,
+        account: account.map(|account| account.email),
+        refresh_minutes,
     })
 }
 
@@ -585,14 +736,20 @@ pub async fn save_settings(services: &Services, update: SettingsUpdate) -> anyho
                 .map_err(|err| anyhow::anyhow!(err.to_string()))?;
         }
     }
-    omamail_store::set_setting(
-        &services.db,
-        SETTING_JEV,
-        if update.jev_enabled { "1" } else { "0" },
-    )
-    .await?;
-    let encoded = serde_json::to_string(&categories)?;
-    omamail_store::set_setting(&services.db, SETTING_CATEGORIES, &encoded).await?;
+    if let Some(minutes) = update.refresh_minutes {
+        let minutes = minutes.min(MAX_REFRESH_MINUTES).to_string();
+        omamail_store::set_setting(&services.db, SETTING_REFRESH, &minutes).await?;
+    }
+    if let Some(account) = signed_in_account(services).await? {
+        omamail_store::set_setting(
+            &services.db,
+            &jev_key(account.id),
+            if update.jev_enabled { "1" } else { "0" },
+        )
+        .await?;
+        let encoded = serde_json::to_string(&categories)?;
+        omamail_store::set_setting(&services.db, &categories_key(account.id), &encoded).await?;
+    }
     mail_settings(services).await
 }
 
@@ -639,8 +796,28 @@ pub async fn classify(services: &Services, all: bool) -> anyhow::Result<usize> {
     Ok(sorted)
 }
 
-async fn load_categories(services: &Services) -> anyhow::Result<Vec<Category>> {
-    match omamail_store::get_setting(&services.db, SETTING_CATEGORIES).await? {
+async fn account_jev_enabled(services: &Services, account_id: i64) -> anyhow::Result<bool> {
+    if let Some(value) = omamail_store::get_setting(&services.db, &jev_key(account_id)).await? {
+        return Ok(value == "1");
+    }
+    if signed_in_accounts(services).await?.len() == 1 {
+        return Ok(omamail_store::get_setting(&services.db, "jev_enabled")
+            .await?
+            .as_deref()
+            == Some("1"));
+    }
+    Ok(false)
+}
+
+async fn load_categories(services: &Services, account_id: i64) -> anyhow::Result<Vec<Category>> {
+    let raw = match omamail_store::get_setting(&services.db, &categories_key(account_id)).await? {
+        Some(raw) => Some(raw),
+        None if signed_in_accounts(services).await?.len() <= 1 => {
+            omamail_store::get_setting(&services.db, "categories").await?
+        }
+        None => None,
+    };
+    match raw {
         Some(raw) => {
             let mut categories: Vec<Category> = serde_json::from_str(&raw)
                 .map_err(|err| anyhow::anyhow!("saved categories are not readable: {err}"))?;

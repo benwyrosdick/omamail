@@ -8,7 +8,9 @@ pub use auth::{
     authorize_url, exchange_code, generate_pkce, needs_reauth, refresh_access, AuthParams, Pkce,
     SignedIn, TokenRejected, Tokens, AUTH_ENDPOINT, GMAIL_SCOPE, TOKEN_ENDPOINT,
 };
-pub use client::{parse_message, parse_profile_email, GoogleClient, USERINFO_ENDPOINT};
+pub use client::{
+    parse_message, parse_profile_email, GoogleClient, HistoryDelta, USERINFO_ENDPOINT,
+};
 
 use anyhow::Context;
 use auth::post_token;
@@ -46,7 +48,17 @@ pub async fn sign_in_via_browser(
         eprintln!("open this URL yourself:\n{url}");
     }
 
-    let query = wait_for_callback(listener).await?;
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+    if let Ok(mut slot) = SIGN_IN_CANCEL.lock() {
+        if let Some(previous) = slot.replace(cancel_tx) {
+            let _ = previous.send(());
+        }
+    }
+    let query = wait_for_callback(listener, cancel_rx).await;
+    if let Ok(mut slot) = SIGN_IN_CANCEL.lock() {
+        slot.take();
+    }
+    let query = query?;
     if query.get("state").map(String::as_str) != Some(state.as_str()) {
         anyhow::bail!("OAuth state did not match; sign-in was abandoned");
     }
@@ -101,13 +113,29 @@ fn open_browser(url: &str) -> std::io::Result<()> {
     cmd.spawn().map(|_| ())
 }
 
+static SIGN_IN_CANCEL: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>> =
+    std::sync::Mutex::new(None);
+
+/// Stop a sign-in that is waiting for the browser. Safe to call if none is running.
+pub fn cancel_sign_in() {
+    if let Ok(mut slot) = SIGN_IN_CANCEL.lock() {
+        if let Some(cancel) = slot.take() {
+            let _ = cancel.send(());
+        }
+    }
+}
+
 async fn wait_for_callback(
     listener: TcpListener,
+    mut cancel: tokio::sync::oneshot::Receiver<()>,
 ) -> anyhow::Result<std::collections::HashMap<String, String>> {
-    let accepted = tokio::time::timeout(Duration::from_secs(180), listener.accept())
-        .await
-        .context("timed out waiting for Google to redirect back — sign-in was not finished")?
-        .context("accept the OAuth redirect")?;
+    let accepted = tokio::select! {
+        accepted = listener.accept() => accepted.context("accept the OAuth redirect")?,
+        _ = &mut cancel => anyhow::bail!("sign-in cancelled"),
+        _ = tokio::time::sleep(Duration::from_secs(180)) => {
+            anyhow::bail!("timed out waiting for Google to redirect back — sign-in was not finished")
+        }
+    };
     let (mut socket, _) = accepted;
     let mut buf = vec![0u8; 8192];
     let n = tokio::time::timeout(Duration::from_secs(10), socket.read(&mut buf))
