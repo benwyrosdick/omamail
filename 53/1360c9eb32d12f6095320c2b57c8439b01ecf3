@@ -1,0 +1,79 @@
+src-tauri/Cargo.toml
+  s_cbb86680673ad1::t_5a3bc4f7a88677 28
+crates/omamail-google/src/client.rs
+  s_7eee292d8c99bc::t_25fe63678a77e4 163-173
+  s_7eee292d8c99bc::t_bb6ce9aee447bb 103-162,174-234,813-844
+  s_7eee292d8c99bc::t_21e2b9001825a1 845
+ui/src/App.svelte
+  s_cbb86680673ad1::t_bbb5b8a2958f96 21,25,184,188-191,193,201-204,206-213
+  s_cbb86680673ad1::t_e39a99c7d5260c 632-633,635
+  s_cbb86680673ad1::t_9c58f100d30af5 163-165,167
+  s_cbb86680673ad1::t_e579020e4c77d3 610-623
+  s_7eee292d8c99bc::t_0c5e265e370850 31,65,221-228,232-233
+  s_7eee292d8c99bc::t_bf2141b59c6c77 38,59-64,66-67,83,95,434,437,666-678
+  s_7eee292d8c99bc::t_6ff9a191c1b34a 627
+  s_cbb86680673ad1::t_09695e628ddee1 32,158-159,169-170,172-180,214-215,624,630
+  s_cbb86680673ad1::t_8e3f9d8e66de2c 628
+  s_cbb86680673ad1::t_5f77ebe52a0e42 646-648,654-665
+  s_cbb86680673ad1::t_40e07f58fcf91a 649-653
+  s_cbb86680673ad1::t_1248ae3533615c 694
+  s_7eee292d8c99bc::t_d89b1fa4639fa6 218-219,231,235,240-254,256-259
+  s_7eee292d8c99bc::t_4ed09a09b83e21 216-217,220,631
+ui/src/lib/api.ts
+  s_7eee292d8c99bc::t_121238590ef8a1 60,122
+  s_cbb86680673ad1::t_59c54e01d58d24 104
+  s_cbb86680673ad1::t_b5024630b9c270 19,59,105-106
+crates/omamail-app/src/commands.rs
+  s_7eee292d8c99bc::t_25fe63678a77e4 242-246,249
+  s_cbb86680673ad1::t_780d267a62b186 399,412-419
+  s_cbb86680673ad1::t_3cc6666631b0e0 137-162,164
+  s_cbb86680673ad1::t_3408b682b64b15 361,428,444
+  s_7eee292d8c99bc::t_459211cfc638c3 661-663,678-679,687-688,707,709-711,717,739-741
+  s_cbb86680673ad1::t_7f06c78a789464 677
+  s_cbb86680673ad1::t_b5275295b494fa 15,74-84,88,123
+  s_7eee292d8c99bc::t_466c479d255b0b 173-199,203-241,247-248,250-263
+  s_cbb86680673ad1::t_d1d4c7de9cc0ce 743-752
+  s_cbb86680673ad1::t_72612e861b672c 799-802,810-814,819-820
+  s_cbb86680673ad1::t_5801c1e92479a5 664-670
+  s_cbb86680673ad1::t_c82d4938ba84e4 533,545-547,549-552,557-570
+  s_cbb86680673ad1::t_1e3d6ec0783b71 698-706,716
+  s_cbb86680673ad1::t_fa82d9668ebf1e 571,742,803-809,815-818
+crates/omamail-google/src/lib.rs
+  s_cbb86680673ad1::t_6dc6b7b229b3b3 51-61,116-127,130,132-138
+  s_7eee292d8c99bc::t_eac3076fef3d7c 11-13
+crates/omamail-app/src/cli.rs
+  s_cbb86680673ad1::t_730b39c499e3ee 122
+src-tauri/src/lib.rs
+  s_cbb86680673ad1::t_c12e2ac524c5f8 24-28,202
+  s_cbb86680673ad1::t_ee14d7f21d063a 29-43,204
+ui/src/app.css
+  s_cbb86680673ad1::t_7ea24da14a6118 147-198
+  s_7eee292d8c99bc::t_bf2141b59c6c77 234
+  s_cbb86680673ad1::t_dd65aca4516425 136
+Cargo.lock
+  s_7eee292d8c99bc::t_fe12d9a1cf48db 2915
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "531360c9eb32d12f6095320c2b57c8439b01ecf3",
+  "prompts": {},
+  "sessions": {
+    "s_7eee292d8c99bc": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1c217-2eef-76af-9b02-31767adc27a8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    },
+    "s_cbb86680673ad1": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1b188-b5a4-724d-ba8f-dd3104d11eb1",
+        "model": "grok-4.7"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
