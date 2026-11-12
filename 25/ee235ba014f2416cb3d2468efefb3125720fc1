@@ -1,0 +1,22 @@
+crates/omamail-store/src/lib.rs
+  s_7eee292d8c99bc::t_ecf7a7e7deb886 107-108,134,139
+crates/omamail-google/src/client.rs
+  s_7eee292d8c99bc::t_ab880a9970e3fe 607-610,615-640,806-820
+  s_7eee292d8c99bc::t_ce51848478ad85 821-822
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25ee235ba014f2416cb3d2468efefb3125720fc1",
+  "prompts": {},
+  "sessions": {
+    "s_7eee292d8c99bc": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1c217-2eef-76af-9b02-31767adc27a8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ben Wyrosdick <ben.wyrosdick@gmail.com>"
+    }
+  }
+}
