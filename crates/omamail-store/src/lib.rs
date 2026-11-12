@@ -104,8 +104,8 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
     .execute(pool)
     .await
     .context("settings table")?;
-    // Cached HTML was sanitized without the sender stylesheet, which left
-    // inbox preview text visible. Drop it once so the next open refetches.
+    // Cached HTML is the sanitizer's output. Bump the revision whenever the
+    // sanitizer changes so the next open refetches and cleans it again.
     let rev = get_setting(pool, "html_sanitizer").await?;
     for (column, ddl) in [
         (
@@ -131,12 +131,12 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
                 .with_context(|| format!("add bodies.{column}"))?;
         }
     }
-    if rev.as_deref() != Some("3") {
+    if rev.as_deref() != Some("4") {
         sqlx::query("UPDATE bodies SET html = NULL")
             .execute(pool)
             .await
             .context("drop stale html cache")?;
-        set_setting(pool, "html_sanitizer", "3").await?;
+        set_setting(pool, "html_sanitizer", "4").await?;
     }
     Ok(())
 }

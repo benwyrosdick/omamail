@@ -604,8 +604,38 @@ fn sanitize_html(html: &str) -> String {
         ])
         .add_tags(["style"])
         .clean_content_tags(drop_contents)
+        .attribute_filter(|element, attribute, value| match (element, attribute) {
+            ("div", "style") => Some(loosen_div_height(value).into()),
+            _ => Some(value.into()),
+        })
         .link_rel(Some("noopener noreferrer"));
     builder.clean(html).to_string()
+}
+
+/// Let div text grow past the sender's fixed heights. WebKit resolves
+/// `height: 100%` inside table-cell layouts against the whole cell, which
+/// opens huge gaps; pinned pixel heights clip text into the next block once
+/// our line height differs from the sender's. Pixel heights become
+/// `min-height` so empty spacer divs keep their size.
+fn loosen_div_height(style: &str) -> String {
+    style
+        .split(';')
+        .filter_map(|declaration| {
+            let Some((name, value)) = declaration.split_once(':') else {
+                return Some(declaration.to_string());
+            };
+            if !name.trim().eq_ignore_ascii_case("height") {
+                return Some(declaration.to_string());
+            }
+            let value = value.trim().to_ascii_lowercase();
+            if value.contains('%') || value.starts_with("auto") {
+                None
+            } else {
+                Some(format!("min-height:{}", declaration.split_once(':').unwrap().1))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
 fn find_part(part: &serde_json::Value, mime: &str) -> Option<String> {
@@ -771,6 +801,23 @@ mod tests {
         assert!(!html.contains("The Dusty Tome"));
         assert!(html.contains("display:none") || html.contains("display: none"));
         assert!(html.contains("Visible"));
+    }
+
+    #[test]
+    fn div_heights_loosen_but_spacers_and_tables_keep_theirs() {
+        let raw = serde_json::json!({
+            "payload": {
+                "mimeType": "text/html",
+                "body": {"data": URL_SAFE_NO_PAD.encode(
+                    b"<div style=\"height: 100%; width: 100%\"><div style=\"margin: 0; HEIGHT: 105px\">Hi</div></div><div style=\"line-height: 20px\"></div><table style=\"height: 100%\"><tr><td>x</td></tr></table>"
+                )}
+            }
+        });
+        let html = body_from_message(&raw).html.unwrap();
+        assert!(html.contains(r#"<div style=" width: 100%">"#), "{html}");
+        assert!(html.contains("margin: 0;min-height: 105px"), "{html}");
+        assert!(html.contains("line-height: 20px"), "{html}");
+        assert!(html.contains(r#"<table style="height: 100%">"#), "{html}");
     }
 
     #[test]
